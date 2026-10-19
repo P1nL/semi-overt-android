@@ -1,0 +1,8 @@
+<resources>
+    <style name="Theme.SemiOvert" parent="android:Theme.Material.NoActionBar">
+        <item name="android:colorBackground">#191a1c</item>
+        <item name="android:windowBackground">#191a1c</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+</resources>

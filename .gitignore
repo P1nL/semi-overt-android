@@ -1,22 +1,31 @@
-*.iml
-.gradle
-/local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
-.DS_Store
-/build
-/captures
-.externalNativeBuild
-.cxx
+# Android / Gradle build output and local SDK configuration
+.gradle/
+.kotlin/
+build/
+.externalNativeBuild/
+.cxx/
 local.properties
 
-# Local IDE state and Kotlin caches
-/.idea/
-.kotlin/
+# Local IDE and operating-system state
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Install packages, captures and runtime diagnostics
+*.apk
+*.aab
+*.ap_
+/captures/
+*.log
+hs_err_pid*
+replay_pid*
+
+# Python cover-generation caches and local environments
+__pycache__/
+*.py[cod]
+/.venv/
 
 # Local credentials and signing material
 *.jks

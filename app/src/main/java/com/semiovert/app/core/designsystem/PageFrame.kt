@@ -1,0 +1,61 @@
+package com.semiovert.app.core.designsystem
+
+import androidx.compose.foundation.*
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.*
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.*
+import androidx.compose.ui.unit.dp
+import com.semiovert.app.core.model.*
+
+@Composable
+fun PageFrame(title: String,onBack: ()->Unit,tag: String,scroll: Boolean=true,actions: (@Composable ()->Unit)?=null,content: @Composable ColumnScope.()->Unit) {
+    Column(Modifier.fillMaxSize().imePadding().navigationBarsPadding().testTag(tag)) {
+        Row(Modifier.fillMaxWidth().heightIn(min=64.dp).padding(horizontal=12.dp),verticalAlignment=Alignment.CenterVertically) {
+            IconButton(onClick=onBack,modifier=Modifier.semantics {contentDescription="返回"}) {SoIcon(SoSymbol.ARROW,modifier=Modifier.graphicsLayer {rotationZ=180f})}
+            Text(title,style=MaterialTheme.typography.titleMedium,modifier=Modifier.weight(1f).semantics {heading()})
+            actions?.invoke()
+        }
+        val body=Modifier.weight(1f).fillMaxWidth().then(if(scroll) Modifier.verticalScroll(rememberScrollState()) else Modifier).padding(horizontal=24.dp)
+        Column(body,content=content)
+    }
+}
+
+@Composable
+fun DemoNotice(text: String="离线演示，不连接真实账号。请勿输入真实密码。") {
+    Text(text,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.fillMaxWidth().padding(top=8.dp,bottom=20.dp))
+}
+
+@Composable
+fun ProfileAvatar(variant: Int=0,size: Int=56) {
+    Surface(shape=CircleShape,color=MaterialTheme.colorScheme.secondary,modifier=Modifier.size(size.dp)) {
+        Box(contentAlignment=Alignment.Center) {SoIcon(when(variant%3) {1->SoSymbol.BOOK;2->SoSymbol.HOME;else->SoSymbol.PERSON},modifier=Modifier.size((size*.48f).dp),tint=MaterialTheme.colorScheme.onSecondary)}
+    }
+}
+
+@Composable
+fun SettingRow(label: String,detail: String?=null,onClick: ()->Unit) {
+    Row(Modifier.fillMaxWidth().heightIn(min=60.dp).clickable(onClick=onClick).padding(vertical=10.dp),verticalAlignment=Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {Text(label,style=MaterialTheme.typography.bodyMedium);if(detail!=null)Text(detail,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
+        SoIcon(SoSymbol.ARROW,modifier=Modifier.size(18.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ConfirmationSheet(title: String,body: String,confirm: String="确定",onConfirm: ()->Unit,onDismiss: ()->Unit) {
+    ModalBottomSheet(modifier=Modifier.preferredFrameRate(MotionFramePolicy.TARGET_FPS),onDismissRequest=onDismiss,sheetState=rememberModalBottomSheetState(skipPartiallyExpanded=true)) {
+        Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(24.dp)) {
+            Text(title,style=MaterialTheme.typography.headlineSmall)
+            Text(body,style=MaterialTheme.typography.bodyMedium,modifier=Modifier.padding(top=16.dp,bottom=24.dp))
+            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+                Button(onClick=onConfirm,modifier=Modifier.weight(1f).heightIn(min=48.dp)) {Text(confirm)}
+                OutlinedButton(onClick=onDismiss,modifier=Modifier.weight(1f).heightIn(min=48.dp)) {Text("取消")}
+            }
+        }
+    }
+}
