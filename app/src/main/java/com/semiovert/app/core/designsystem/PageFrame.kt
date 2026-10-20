@@ -14,14 +14,14 @@ import com.semiovert.app.core.model.*
 
 @Composable
 fun PageFrame(title: String,onBack: ()->Unit,tag: String,scroll: Boolean=true,actions: (@Composable ()->Unit)?=null,content: @Composable ColumnScope.()->Unit) {
-    Column(Modifier.fillMaxSize().imePadding().navigationBarsPadding().testTag(tag)) {
-        Row(Modifier.fillMaxWidth().heightIn(min=64.dp).padding(horizontal=12.dp),verticalAlignment=Alignment.CenterVertically) {
+    Box(Modifier.fillMaxSize().imePadding().navigationBarsPadding().testTag(tag)) {
+        val body=Modifier.fillMaxSize().then(if(scroll)Modifier.verticalScroll(rememberScrollState()) else Modifier).padding(start=24.dp,end=24.dp,top=64.dp)
+        Column(body,content=content)
+        Row(Modifier.align(Alignment.TopCenter).fillMaxWidth().heightIn(min=64.dp).padding(horizontal=12.dp),verticalAlignment=Alignment.CenterVertically) {
             IconButton(onClick=onBack,modifier=Modifier.semantics {contentDescription="返回"}) {SoIcon(SoSymbol.ARROW,modifier=Modifier.graphicsLayer {rotationZ=180f})}
             Text(title,style=MaterialTheme.typography.titleMedium,modifier=Modifier.weight(1f).semantics {heading()})
             actions?.invoke()
         }
-        val body=Modifier.weight(1f).fillMaxWidth().then(if(scroll) Modifier.verticalScroll(rememberScrollState()) else Modifier).padding(horizontal=24.dp)
-        Column(body,content=content)
     }
 }
 
@@ -33,7 +33,8 @@ fun DemoNotice(text: String="离线演示，不连接真实账号。请勿输入
 @Composable
 fun ProfileAvatar(variant: Int=0,size: Int=56) {
     Surface(shape=CircleShape,color=MaterialTheme.colorScheme.secondary,modifier=Modifier.size(size.dp)) {
-        Box(contentAlignment=Alignment.Center) {SoIcon(when(variant%3) {1->SoSymbol.BOOK;2->SoSymbol.HOME;else->SoSymbol.PERSON},modifier=Modifier.size((size*.48f).dp),tint=MaterialTheme.colorScheme.onSecondary)}
+        // Shared-element bounds change every frame; scale the symbol with those bounds, not the final size argument.
+        Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center) {SoIcon(when(variant%3) {1->SoSymbol.BOOK;2->SoSymbol.HOME;else->SoSymbol.PERSON},modifier=Modifier.fillMaxSize(.48f),tint=MaterialTheme.colorScheme.onSecondary)}
     }
 }
 

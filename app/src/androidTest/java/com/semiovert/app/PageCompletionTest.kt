@@ -2,6 +2,7 @@ package com.semiovert.app
 
 import android.content.Context
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.espresso.Espresso
@@ -17,7 +18,7 @@ class PageCompletionTest {
     @get:Rule(order=1) val app=createAndroidComposeRule<MainActivity>()
     private fun back() {Espresso.pressBack();app.waitForIdle()}
     private fun navigate(label: String) {
-        app.onNodeWithContentDescription("打开页面导航").performClick()
+        app.onNodeWithTag("main-circle").performSemanticsAction(SemanticsActions.OnLongClick){it()}
         app.onNodeWithContentDescription("切换到"+label).performClick()
     }
     private fun enterDemo() {

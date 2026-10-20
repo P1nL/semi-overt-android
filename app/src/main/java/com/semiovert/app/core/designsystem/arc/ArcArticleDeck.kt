@@ -4,21 +4,25 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.*
+import androidx.compose.ui.text.style.TextAlign
 import com.semiovert.app.core.designsystem.*
 import com.semiovert.app.core.model.*
+import com.semiovert.app.navigation.LocalNavigationPlacement
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
-/** Sequentially layered cards; spacing exposes the focus, not a selected z-index boost. */
+/** The focus rises; neighbours pitch gently around fixed bottom edges without changing the base ring. */
 @Composable
 fun ArcArticleDeck(articles: List<Article>,selected: Int,onSelected: (Int)->Unit,onArticle: (String)->Unit,modifier: Modifier=Modifier) {
     val ids=articles.map {it.id}
@@ -31,8 +35,13 @@ fun ArcArticleDeck(articles: List<Article>,selected: Int,onSelected: (Int)->Unit
     val select by rememberUpdatedState(onSelected)
     val read by rememberUpdatedState(onArticle)
     val roll=LocalFlowRoll.current
-    val interactive=roll<.001f
+    val phase=LocalFlowPhase.current
+    val interactive=roll<.001f&&phase==FlowPhase.IDLE
+    val lastFrames=remember {mutableMapOf<Int,ArcCardPose>()}
+    val exitFrames=remember(phase){if(phase==FlowPhase.EXIT)lastFrames.toMap() else emptyMap()}
     val density=LocalDensity.current.density
+    val placement=LocalNavigationPlacement.current
+    val cardShape=remember {RoundedCornerShape(18.dp)}
     fun move(value: Float) {position=value;focusedPage=ArcDeckMath.focus(value,focusedPage)}
     fun show(index: Int): Boolean {
         if(!interactive||index !in articles.indices)return false
@@ -42,13 +51,13 @@ fun ArcArticleDeck(articles: List<Article>,selected: Int,onSelected: (Int)->Unit
     }
     LaunchedEffect(selected) {
         if(!dragging&&!settling&&ArcDeckMath.index(focusedPage,articles.size)!=selected) {
-            position=selected.toFloat();focusedPage=selected
+            if(phase!=FlowPhase.EXIT){position=selected.toFloat();focusedPage=selected}
         }
     }
     LaunchedEffect(interactive) {
         if(!interactive) {
             settleJob?.cancel();dragging=false;settling=false
-            position=selected.toFloat();focusedPage=selected
+            if(phase!=FlowPhase.EXIT){position=selected.toFloat();focusedPage=selected}
         }
     }
 
@@ -81,7 +90,6 @@ fun ArcArticleDeck(articles: List<Article>,selected: Int,onSelected: (Int)->Unit
             }
         }
         Box(Modifier.fillMaxSize().testTag("home-arc")
-            .graphicsLayer {alpha=1f-roll;translationY=24.dp.toPx()*roll}
             .draggable(
                 state=rememberDraggableState {delta ->move(position-delta/stepPx)},
                 orientation=Orientation.Vertical,enabled=interactive,startDragImmediately=settling,
@@ -92,26 +100,44 @@ fun ArcArticleDeck(articles: List<Article>,selected: Int,onSelected: (Int)->Unit
                 },
             )) {
             for(pose in ArcDeckMath.frames(articles.size,position,g)) {
+                val path=ArcDeckMath.scenePose(pose,g,roll,phase)
+                val start=exitFrames[pose.article]
+                val moving=if(phase==FlowPhase.EXIT&&start!=null)path.copy(
+                    centerX=path.centerX+(start.centerX-pose.centerX)*(1f-roll),
+                    centerY=path.centerY+(start.centerY-pose.centerY)*(1f-roll),
+                    scale=path.scale+(start.scale-pose.scale)*(1f-roll)) else path
+                SideEffect {lastFrames[pose.article]=moving}
                 val article=articles[pose.article]
                 val active=pose.article==focused
                 key(article.id) {
-                val follower=if(interactive)animateFloatAsState(
-                    targetValue=pose.waveOffset,animationSpec=ArcDeckMotion.followSpec(),label="arc-follow-"+article.id,
-                ) else null
+                val relativePage=pose.distance+position-focusedPage
+                val lift=animateFloatAsState(targetValue=if(interactive&&active)ArcDeckMath.focusLift(g) else 0f,
+                    animationSpec=ArcDeckMotion.followSpec(),label="arc-lift-"+article.id)
+                val shiftX=animateFloatAsState(targetValue=if(interactive&&active)ArcDeckMath.focusShiftX(g) else 0f,
+                    animationSpec=ArcDeckMotion.followSpec(),label="arc-shift-x-"+article.id)
+                val elevation=animateFloatAsState(targetValue=if(interactive&&active&&!dragging&&!settling)ArcDeckMath.FOCUS_ELEVATION else 0f,
+                    animationSpec=tween(durationMillis=220,delayMillis=if(active&&!dragging&&!settling)180 else 0),label="arc-depth-"+article.id)
+                val tilt=animateFloatAsState(targetValue=if(interactive)ArcDeckMath.neighbourTilt(relativePage) else 0f,
+                    animationSpec=ArcDeckMotion.tiltSpec(relativePage),label="arc-tilt-"+article.id)
                 Box(Modifier.requiredSize(g.cardWidth.dp,g.cardHeight.dp)
                     .zIndex(pose.layer)
                     .graphicsLayer {
-                        val amount=follower?.value?:0f
-                        translationX=(pose.centerX-g.cardWidth/2f+ArcDeckMath.waveX(pose.distance,amount))*density
-                        translationY=(pose.centerY-g.cardHeight/2f+ArcDeckMath.waveY(pose.distance,amount))*density
-                        scaleX=pose.scale;scaleY=pose.scale;alpha=pose.alpha
+                        translationX=(moving.centerX-g.cardWidth/2f+shiftX.value)*density
+                        translationY=(moving.centerY-g.cardHeight/2f-lift.value)*density
+                        rotationZ=0f
+                        rotationX=tilt.value
+                        transformOrigin=TransformOrigin(.5f,1f)
+                        cameraDistance=g.cardHeight*density*8f
+                        shape=cardShape
+                        shadowElevation=elevation.value*density
+                        scaleX=moving.scale;scaleY=moving.scale;alpha=moving.alpha
                     }.testTag("arc-card-"+article.id)) {
                     val semantics=if(active)Modifier.testTag("article-"+article.id).semantics(mergeDescendants=true) {
                         role=Role.Button
                         contentDescription=article.title+"，"+article.author.name+"，约"+article.minutes+"分钟"
                         stateDescription="选中"
                     } else Modifier.clearAndSetSemantics {}
-                    CoverArticleCard(article,active,Modifier.fillMaxSize().then(semantics)
+                    CoverArticleCard(article,false,Modifier.fillMaxSize().then(semantics)
                         .clickable(enabled=interactive&&!dragging&&!settling,onClickLabel=if(active)"阅读文章" else "选择文章") {
                             if(active)read(article.id) else settleTo((position+pose.distance).toInt())
                         },"arc-cover-"+article.id)
@@ -121,7 +147,10 @@ fun ArcArticleDeck(articles: List<Article>,selected: Int,onSelected: (Int)->Unit
         }
         Text("${focused+1} / ${articles.size}",style=MaterialTheme.typography.bodySmall,
             color=MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier=Modifier.align(Alignment.BottomStart).zIndex(1f)
-                .padding(start=24.dp,bottom=30.dp).clearAndSetSemantics {})
+            textAlign=TextAlign.Center,
+            modifier=Modifier.align(Alignment.BottomEnd).zIndex(1f).imePadding().navigationBarsPadding()
+                .padding(end=20.dp,bottom=86.dp)
+                .offset(x=-(maxWidth-96.dp).coerceAtLeast(0.dp)*(1f-placement.x),y=-140.dp*placement.y)
+                .width(56.dp).testTag("home-position").clearAndSetSemantics {})
     }
 }

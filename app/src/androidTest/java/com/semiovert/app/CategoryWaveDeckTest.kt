@@ -53,7 +53,7 @@ class CategoryWaveDeckTest {
         assertEquals("All cards keep equal widths",front.width,middle.width,1f)
         assertEquals(front.width,back.width,1f)
         val title=app.onNodeWithText(SampleLibrary.inDuration(ReadingDuration.QUICK).first().title,useUnmergedTree=true).fetchSemanticsNode().boundsInRoot
-        assertEquals("Copy starts at the top-left inset",front.top+18f*density,title.top,1f)
+        assertEquals("Copy clears the shared reading handle",front.top+34f*density,title.top,1f)
         assertEquals(front.left+18f*density,title.left,1f)
         assertTrue(front.height>front.width)
         assertTrue(back.center.y<middle.center.y&&middle.center.y<front.center.y)

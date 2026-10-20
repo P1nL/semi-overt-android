@@ -12,6 +12,8 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.geometry.*
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.*
@@ -26,7 +28,7 @@ import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RecordCalendar(authorId: String,owner: Boolean,snapshots: Boolean,cleared: Boolean,initialExpanded: Boolean=false) {
+fun RecordCalendar(authorId: String,owner: Boolean,snapshots: Boolean,cleared: Boolean,initialExpanded: Boolean=false,textProgress: Float=1f) {
     var expanded by rememberSaveable {mutableStateOf(initialExpanded)}
     var monthValue by rememberSaveable {mutableStateOf("2026-10")}
     var selectedDay by rememberSaveable {mutableStateOf(0)}
@@ -45,7 +47,7 @@ fun RecordCalendar(authorId: String,owner: Boolean,snapshots: Boolean,cleared: B
         if(selectedDay>0) {if(displayedDay!=selectedDay)bubble.snapTo(0f);displayedDay=selectedDay}
         bubble.animateTo(if(selectedDay>0)1f else 0f,tween(if(motion)if(selectedDay>0)280 else 220 else 0,easing=SoEase))
     }
-    Row(Modifier.fillMaxWidth().padding(top=24.dp,bottom=12.dp),verticalAlignment=Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().padding(top=24.dp,bottom=12.dp).drawWithContent {clipRect(right=size.width*textProgress.coerceIn(0f,1f)){this@drawWithContent.drawContent()}},verticalAlignment=Alignment.CenterVertically) {
         TextButton(onClick={expanded=!expanded},contentPadding=PaddingValues(0.dp),modifier=Modifier.heightIn(min=48.dp).testTag("records-expand")) {
             Text("记录",style=MaterialTheme.typography.labelLarge,color=MaterialTheme.colorScheme.onSurface)
             SoIcon(SoSymbol.CHEVRON,modifier=Modifier.padding(start=4.dp).size(16.dp).graphicsLayer {rotationZ=arrow})

@@ -5,6 +5,87 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class WaveDeckMathTest {
+    @Test fun categoryAndSearchShowSeventyPercentOfTheSameFullHeightCardAtTheScreenBottom() {
+        val reference=WaveDeckMath.geometry(411f,900f,3)
+        for((viewport,limit) in listOf(900f to WaveDeckMath.CATEGORY_VISIBLE,750f to WaveDeckMath.SEARCH_VISIBLE)) {
+            val top=WaveDeckMath.restingFrontTop(411f,viewport,900f)
+            val deck=WaveDeckMath.embeddedGeometry(411f,viewport,11,900f,top,limit)
+            assertEquals(reference.frontHeight,deck.frontHeight,.001f)
+            assertEquals(deck.frontHeight*.7f,viewport-deck.frontTop,.001f)
+            assertTrue(deck.height>viewport)
+            assertEquals(limit,WaveDeckMath.frames(11,0f,deck,limit).size)
+        }
+    }
+    @Test fun personalScrollEndsAtSeventyPercentOfTheFrontCardAndExcludesElasticReserve() {
+        for(count in listOf(1,4,11)) {
+            val height=WaveDeckMath.profileViewportHeight(411f,900f,count)
+            val deck=WaveDeckMath.embeddedGeometry(411f,height,count,900f,76f,WaveDeckMath.PROFILE_VISIBLE)
+            assertEquals(deck.frontHeight*.7f,height-deck.frontTop,.001f)
+            assertTrue(height<deck.height)
+        }
+    }
+    @Test fun embeddedDecksKeepCategoryCardDimensionsInsteadOfUsingTheirClippedHeight() {
+        val category=WaveDeckMath.geometry(411f,900f,4)
+        val profile=WaveDeckMath.embeddedGeometry(411f,300f,4,900f,76f)
+        val search=WaveDeckMath.embeddedGeometry(411f,750f,4,900f)
+        for(deck in listOf(profile,search)) {
+            assertEquals(category.cardSize,deck.cardSize,.001f)
+            assertEquals(category.frontHeight,deck.frontHeight,.001f)
+        }
+        assertTrue("Personal cards extend below the fixed crop",profile.height>300f)
+        assertEquals("Search preserves the category's screen-space top",category.frontTop,search.frontTop+150f,.001f)
+    }
+    @Test fun profileAndSearchTopGapsMatchTheThreeCardCategoryReference() {
+        val category=WaveDeckMath.frames(3,0f,WaveDeckMath.geometry(411f,900f,3))
+        fun top(pose: WaveCardPose)=pose.centerY-pose.height/2f
+        val expected=top(category[0])-top(category[1])
+        for((count,height,frontTop) in listOf(Triple(4,300f,76f),Triple(11,750f,null))) {
+            val geometry=WaveDeckMath.embeddedGeometry(411f,height,count,900f,frontTop)
+            val poses=WaveDeckMath.frames(count,0f,geometry)
+            for(index in 1 until count)assertEquals("Top gaps must not shrink with result count or viewport",expected,top(poses[index-1])-top(poses[index]),.001f)
+            assertTrue("The backmost visible top is not hidden by a counter strip",top(poses.last())>=WaveDeckMath.TOP_INSET-.001f)
+        }
+    }
+    @Test fun sceneWindowsLimitRenderingWithoutDiscardingArticles() {
+        assertEquals(4,WaveDeckMath.SEARCH_VISIBLE)
+        assertEquals(7,WaveDeckMath.CATEGORY_VISIBLE)
+        assertEquals(5,WaveDeckMath.PROFILE_VISIBLE)
+        for(limit in listOf(WaveDeckMath.SEARCH_VISIBLE,WaveDeckMath.CATEGORY_VISIBLE,WaveDeckMath.PROFILE_VISIBLE)) {
+            val g=WaveDeckMath.embeddedGeometry(411f,750f,11,900f,visibleLimit=limit)
+            for(page in -11..11) {
+                val rest=WaveDeckMath.frames(11,page.toFloat(),g,limit)
+                assertEquals(limit,rest.size)
+                assertEquals(WaveDeckMath.index(page,11),rest.maxBy {it.layer}.article)
+                assertTrue(rest.all {it.centerY-it.height/2f>=WaveDeckMath.TOP_INSET-.001f})
+                for(fraction in listOf(.02f,.5f,.85f,.87f,.99f)) {
+                    val moving=WaveDeckMath.frames(11,page+fraction,g,limit)
+                    assertTrue(moving.size<=limit)
+                    assertEquals(moving.size,moving.map {it.article}.distinct().size)
+                }
+            }
+        }
+        assertEquals(4,WaveDeckMath.frames(4,0f,WaveDeckMath.geometry(411f,900f,4),WaveDeckMath.PROFILE_VISIBLE).size)
+    }
+    @Test fun cappedRearReplacementArrivesWithoutFlashingOrAnExtraCard() {
+        val g=WaveDeckMath.embeddedGeometry(411f,750f,11,900f,visibleLimit=4)
+        val before=WaveDeckMath.frames(11,.85f,g,4)
+        assertTrue(before.any {it.article==0&&it.outgoing})
+        assertFalse(before.any {it.article==4})
+        val arriving=WaveDeckMath.frames(11,.8601f,g,4).single {it.article==4}
+        assertTrue(arriving.alpha<.001f)
+        assertEquals(1f,WaveDeckMath.frames(11,1f,g,4).single {it.article==4}.alpha,0f)
+    }
+    @Test fun longUpwardPullIsResistedAndTheExtendedBottomStillCoversTheViewport() {
+        assertEquals(0f,WaveDeckMath.elasticPull(-200f,800f),0f)
+        val pull=WaveDeckMath.elasticPull(-800f,800f)
+        assertTrue(pull<0f&&pull> -WaveDeckMath.MAX_ELASTIC_PULL)
+        assertEquals(0f,WaveDeckMath.elasticPull(800f,800f),0f)
+        val g=WaveDeckMath.embeddedGeometry(411f,730f,11,900f,76f,5)
+        for(pose in WaveDeckMath.frames(11,0f,g,5)) {
+            val bottom=pose.centerY+pose.height/2f+WaveDeckMath.BOTTOM_OVERFLOW-WaveDeckMath.MAX_ELASTIC_PULL
+            assertTrue("No blank bottom even at maximum elastic pull",bottom>730f)
+        }
+    }
     @Test fun restingStackIsBackHighFrontLowAndTheFrontCardIsComplete() {
         for(count in listOf(1,2,3,6,11)) {
             val g=WaveDeckMath.geometry(411f,780f,count)

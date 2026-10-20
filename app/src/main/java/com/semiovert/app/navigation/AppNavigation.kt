@@ -1,28 +1,31 @@
 package com.semiovert.app.navigation
 
 import androidx.compose.animation.*
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.Animatable
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.navigation.*
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.*
+import androidx.lifecycle.Lifecycle
 import com.semiovert.app.core.data.PreviewViewModel
 import com.semiovert.app.core.model.PreviewState
 import com.semiovert.app.core.designsystem.*
-import kotlinx.coroutines.*
+import com.semiovert.app.core.designsystem.wave.WaveDeckOverlayHost
+import kotlinx.coroutines.flow.first
 import com.semiovert.app.feature.home.HomeScreen
 import com.semiovert.app.feature.category.CategoryScreen
 import com.semiovert.app.feature.search.SearchScreen
 import com.semiovert.app.feature.reader.ReaderScreen
+import com.semiovert.app.feature.reader.ArticleExpansionHost
 import com.semiovert.app.feature.profile.*
 import com.semiovert.app.feature.account.*
 import com.semiovert.app.feature.settings.*
@@ -36,8 +39,8 @@ private fun RouteSurface(edgeToEdge: Boolean=false,modifier: Modifier=Modifier,c
     }
 }
 
-private fun NavGraphBuilder.secondary(route: String,arguments: List<NamedNavArgument> = emptyList(),edgeToEdge: Boolean=false,duration: Int=320,content: @Composable (NavBackStackEntry)->Unit) {
-    composable(route,arguments=arguments,enterTransition={slideInHorizontally(tween(duration,easing=SoEase)) {it}},exitTransition={ExitTransition.None},popEnterTransition={EnterTransition.None},popExitTransition={slideOutHorizontally(tween(duration,easing=SoEase)) {it}}) {entry ->RouteSurface(edgeToEdge) {content(entry)}}
+private fun NavGraphBuilder.secondary(route: String,arguments: List<NamedNavArgument> = emptyList(),edgeToEdge: Boolean=false,content: @Composable (NavBackStackEntry)->Unit) {
+    composable(route,arguments=arguments) {entry ->RouteSurface(edgeToEdge) {content(entry)}}
 }
 
 @Composable
@@ -46,65 +49,89 @@ fun AppNavigation(state: PreviewState,model: PreviewViewModel,onStatusBarAppeara
     val focus=LocalFocusManager.current
     val keyboard=LocalSoftwareKeyboardController.current
     val motion=LocalMotionEnabled.current
-    val scope=rememberCoroutineScope()
-    val roll=remember {Animatable(0f)}
-    val reveal=remember {Animatable(1f)}
-    var revealingRoute by remember {mutableStateOf<String?>(null)}
-    var navigationJob by remember {mutableStateOf<Job?>(null)}
+    var homeEntry by rememberSaveable {mutableIntStateOf(0)}
+    var profileEntry by remember {mutableIntStateOf(0)}
+    var handoff by remember {mutableStateOf<PageHandoff?>(null)}
     var navigating by remember {mutableStateOf(false)}
     val entry by controller.currentBackStackEntryAsState()
-    val coverVisible=(entry?.destination?.route==Destination.PROFILE.route && state.signedIn && state.profile.cover!=null) || (entry?.destination?.route==ScreenRoutes.AUTHOR && entry?.arguments?.getString("authorId")=="zhou")
-    val lightStatus=coverVisible || MaterialTheme.colorScheme.surface.luminance()>.5f
+    LaunchedEffect(entry) {
+        navigating=true
+        entry?.lifecycle?.currentStateFlow?.first {it==Lifecycle.State.RESUMED}
+        navigating=false
+    }
+    val lightStatus=MaterialTheme.colorScheme.surface.luminance()>.5f
     SideEffect {onStatusBarAppearance(lightStatus)}
     val topRoutes=remember {Destination.entries.map {it.route}.toSet()}
     val navigate: (Destination)->Unit={target ->
         if(controller.currentDestination?.route!=target.route&&!navigating) {
             focus.clearFocus();keyboard?.hide()
-            navigationJob=scope.launch {
-                navigating=true
-                try {
-                    val flows=setOf(Destination.HOME.route,Destination.CATEGORY.route)
-                    val flowChange=controller.currentDestination?.route in flows&&target.route in flows
-                    if(flowChange&&motion)roll.animateTo(1f,tween(1000,easing=androidx.compose.animation.core.FastOutLinearInEasing))
-                    else {revealingRoute=target.route;reveal.snapTo(if(motion)0f else 1f)}
-                    controller.navigate(target.route) {popUpTo(controller.graph.findStartDestination().id){saveState=true};launchSingleTop=true;restoreState=true}
-                    if(flowChange)roll.animateTo(0f,tween(if(motion)1000 else 0,easing=SoEase))
-                    else reveal.animateTo(1f,tween(if(motion)480 else 0,easing=SoEase))
-                } finally {withContext(NonCancellable) {roll.snapTo(0f);reveal.snapTo(1f);revealingRoute=null;navigating=false}}
+            navigating=true
+            handoff=PageHandoff.between(controller.currentDestination?.route,target.route)
+            if(target==Destination.HOME)homeEntry++
+            if(target==Destination.PROFILE) {
+                profileEntry++
             }
+            controller.navigate(target.route) {popUpTo(controller.graph.findStartDestination().id){saveState=true};launchSingleTop=true;restoreState=true}
         }
     }
-    BackHandler(navigating) {navigationJob?.cancel()}
-    val route: (String)->Unit={focus.clearFocus();keyboard?.hide();controller.navigate(it){launchSingleTop=true}}
-    val back: ()->Unit={controller.popBackStack()}
+    fun changeRoute(action: ()->Unit) {
+        if(!navigating) {
+            focus.clearFocus();keyboard?.hide()
+            handoff=null
+            val previous=controller.currentBackStackEntry
+            navigating=true
+            action()
+            if(previous==controller.currentBackStackEntry)navigating=false
+        }
+    }
+    val route: (String)->Unit={destination ->changeRoute {controller.navigate(destination){launchSingleTop=true}}}
+    val back: ()->Unit={changeRoute {controller.popBackStack()}}
     val read: (String)->Unit={route("reader/"+it)}
     val author: (String)->Unit={route("author/"+it)}
-    val profile: ()->Unit={if(!controller.popBackStack(Destination.PROFILE.route,false))navigate(Destination.PROFILE)}
+    val profile: ()->Unit={changeRoute {
+        if(!controller.popBackStack(Destination.PROFILE.route,false))controller.navigate(Destination.PROFILE.route) {
+            popUpTo(controller.graph.findStartDestination().id){saveState=true};launchSingleTop=true;restoreState=true
+        }
+    }}
     val enterDemo: (String?)->Unit={name ->if(name!=null)model.profile(state.profile.copy(name=name));model.signIn();profile()}
-    val login: ()->Unit={if(!controller.popBackStack(ScreenRoutes.LOGIN,false))controller.navigate(ScreenRoutes.LOGIN) {popUpTo(ScreenRoutes.RESET_SUCCESS){inclusive=true};launchSingleTop=true}}
-    val origin=Offset(.12f+.76f*state.placement.x,.94f-.18f*state.placement.y)
-    fun sceneModifier(route: String)=if(route==revealingRoute)Modifier.circleReveal(reveal.value,origin) else Modifier
-    val pageDuration=if(motion)320 else 0
-    CompositionLocalProvider(LocalNavigationPlacement provides state.placement,LocalFlowRoll provides roll.value,LocalShortcuts provides ShortcutActions(state.shortcuts,model::shortcut,model::removeShortcut)) {
-        NavHost(navController=controller,startDestination=Destination.HOME.route,modifier=Modifier.fillMaxSize(),
-            enterTransition={if(initialState.destination.route !in topRoutes)EnterTransition.None else fadeIn(tween(if(motion)480 else 0),initialAlpha=1f)},
-            exitTransition={if(targetState.destination.route !in topRoutes)ExitTransition.None else fadeOut(tween(if(motion)480 else 0),targetAlpha=1f)},popEnterTransition={EnterTransition.None},popExitTransition={ExitTransition.None}) {
-            composable(Destination.HOME.route) {RouteSurface(modifier=sceneModifier(Destination.HOME.route)) {HomeScreen(navigate,read)}}
-            composable(Destination.CATEGORY.route) {RouteSurface(modifier=sceneModifier(Destination.CATEGORY.route)) {CategoryScreen(navigate,read)}}
-            composable(Destination.SEARCH.route) {RouteSurface(modifier=sceneModifier(Destination.SEARCH.route)) {SearchScreen(navigate,read,author)}}
-            composable(Destination.PROFILE.route) {RouteSurface(edgeToEdge=true,modifier=sceneModifier(Destination.PROFILE.route)) {ProfileScreen(state,model::nextTheme,navigate,route,read)}}
-            secondary("reader/{articleId}",listOf(navArgument("articleId"){type=NavType.StringType}),duration=pageDuration) {ReaderScreen(back,author)}
-            secondary(ScreenRoutes.AUTHOR,listOf(navArgument("authorId"){type=NavType.StringType}),edgeToEdge=true,duration=pageDuration) {entry ->AuthorScreen(entry.arguments?.getString("authorId").orEmpty(),back,read)}
-            secondary(ScreenRoutes.LOGIN,duration=pageDuration) {AccountScreen(false,back,{controller.navigate(ScreenRoutes.REGISTER){popUpTo(ScreenRoutes.LOGIN){inclusive=true}}},{route(ScreenRoutes.FORGOT)},enterDemo)}
-            secondary(ScreenRoutes.REGISTER,duration=pageDuration) {AccountScreen(true,back,{controller.navigate(ScreenRoutes.LOGIN){popUpTo(ScreenRoutes.REGISTER){inclusive=true}}},{route(ScreenRoutes.FORGOT)},enterDemo)}
-            secondary(ScreenRoutes.FORGOT,duration=pageDuration) {ForgotPasswordScreen(back,{route(ScreenRoutes.RESET)})}
-            secondary(ScreenRoutes.RESET,duration=pageDuration) {ResetPasswordScreen(back,{controller.navigate(ScreenRoutes.RESET_SUCCESS){popUpTo(ScreenRoutes.FORGOT){inclusive=true}}})}
-            secondary(ScreenRoutes.RESET_SUCCESS,duration=pageDuration) {ResetSuccessScreen(login)}
-            secondary(ScreenRoutes.SETTINGS,duration=pageDuration) {SettingsScreen(state,model,back,route,profile)}
-            secondary(ScreenRoutes.EDIT_PROFILE,duration=pageDuration) {EditProfileScreen(state.profile,back,{model.profile(it);back()})}
-            secondary(ScreenRoutes.NAV_POSITION,duration=pageDuration) {NavigationPositionScreen(state.placement,back,{model.placement(it);back()})}
-            secondary(ScreenRoutes.RECORDS,duration=pageDuration) {RecordsScreen(state,back)}
-            secondary(ScreenRoutes.STATES,duration=pageDuration) {ContentStatesScreen(back)}
+    val login: ()->Unit={changeRoute {if(!controller.popBackStack(ScreenRoutes.LOGIN,false))controller.navigate(ScreenRoutes.LOGIN) {popUpTo(ScreenRoutes.RESET_SUCCESS){inclusive=true};launchSingleTop=true}}}
+    BackHandler(!navigating&&entry?.destination?.route in topRoutes&&entry?.destination?.route!=Destination.HOME.route) {navigate(Destination.HOME)}
+    CompositionLocalProvider(LocalNavigationPlacement provides state.placement,
+        LocalHomeEntry provides homeEntry,
+        LocalShortcuts provides ShortcutActions(state.shortcuts,model::shortcut,model::removeShortcut)) {
+        ArticleExpansionHost {
+        IdentityTransitionHost {
+        WaveDeckOverlayHost {
+        NavHost(navController=controller,startDestination=Destination.HOME.route,modifier=Modifier.fillMaxSize().pointerInput(navigating) {
+            if(navigating)awaitPointerEventScope {while(true)awaitPointerEvent(PointerEventPass.Initial).changes.forEach {it.consume()}}
+        }, enterTransition={pageEnter(motion)},exitTransition={pageExit(motion)},
+            popEnterTransition={pageEnter(motion,pop=true)},popExitTransition={pageExit(motion,pop=true)}) {
+            composable(Destination.HOME.route) {SceneMotionContent(Destination.HOME,handoff) {RouteSurface(edgeToEdge=true) {HomeScreen(navigate,read)}}}
+            composable(Destination.CATEGORY.route) {SceneMotionContent(Destination.CATEGORY,handoff) {RouteSurface(edgeToEdge=true) {CategoryScreen(navigate,read)}}}
+            composable(Destination.SEARCH.route) {SceneMotionContent(Destination.SEARCH,handoff) {RouteSurface(edgeToEdge=true) {SearchScreen(navigate,read,author)}}}
+            composable(Destination.PROFILE.route) {SceneMotionContent(Destination.PROFILE,handoff) {RouteSurface(edgeToEdge=true) {
+                ProfileScreen(state,model::nextTheme,navigate,route,read,profileEntry)
+            }}}
+            composable("reader/{articleId}",arguments=listOf(navArgument("articleId"){type=NavType.StringType}),
+                enterTransition={EnterTransition.None},exitTransition={ExitTransition.None},popEnterTransition={EnterTransition.None},popExitTransition={ExitTransition.None}) {
+                RouteSurface(edgeToEdge=true){ReaderScreen(back,author)}
+            }
+            secondary(ScreenRoutes.AUTHOR,listOf(navArgument("authorId"){type=NavType.StringType}),edgeToEdge=true) {entry ->AuthorScreen(entry.arguments?.getString("authorId").orEmpty(),back,read)}
+            secondary(ScreenRoutes.LOGIN) {AccountScreen(false,back,{changeRoute {controller.navigate(ScreenRoutes.REGISTER){popUpTo(ScreenRoutes.LOGIN){inclusive=true}}}},{route(ScreenRoutes.FORGOT)},enterDemo)}
+            secondary(ScreenRoutes.REGISTER) {AccountScreen(true,back,{changeRoute {controller.navigate(ScreenRoutes.LOGIN){popUpTo(ScreenRoutes.REGISTER){inclusive=true}}}},{route(ScreenRoutes.FORGOT)},enterDemo)}
+            secondary(ScreenRoutes.FORGOT) {ForgotPasswordScreen(back,{route(ScreenRoutes.RESET)})}
+            secondary(ScreenRoutes.RESET) {ResetPasswordScreen(back,{changeRoute {controller.navigate(ScreenRoutes.RESET_SUCCESS){popUpTo(ScreenRoutes.FORGOT){inclusive=true}}}})}
+            secondary(ScreenRoutes.RESET_SUCCESS) {ResetSuccessScreen(login)}
+            secondary(ScreenRoutes.SETTINGS) {SettingsScreen(state,model,back,route,profile)}
+            secondary(ScreenRoutes.EDIT_PROFILE) {EditProfileScreen(state.profile,back,{model.profile(it);back()})}
+            secondary(ScreenRoutes.NAV_POSITION) {NavigationPositionScreen(state.placement,back,{model.placement(it);back()})}
+            secondary(ScreenRoutes.RECORDS) {RecordsScreen(state,back)}
+            secondary(ScreenRoutes.STATES) {ContentStatesScreen(back)}
+        }
+        }
+        }
         }
     }
+    // Finish the handoff instead of snapping both scenes back to their resting positions.
+    BackHandler(navigating) {}
 }

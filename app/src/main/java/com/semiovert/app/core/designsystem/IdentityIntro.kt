@@ -28,7 +28,7 @@ class IdentityAnchor(val signedIn: Boolean,val avatar: Int) {
     var image by mutableStateOf<ImageBitmap?>(null)
     var playing by mutableStateOf(false)
 }
-private val LocalIdentity=staticCompositionLocalOf {IdentityAnchor(false,0)}
+val LocalIdentity=staticCompositionLocalOf {IdentityAnchor(false,0)}
 val LocalIntroReady=compositionLocalOf {true}
 
 private fun DrawScope.drawIdentityFrame(atlases: List<ImageBitmap>,frame: Int,rect: Rect,tint: Color,opacity: Float=1f,mode: BlendMode=BlendMode.SrcOver) {
@@ -39,23 +39,30 @@ private fun DrawScope.drawIdentityFrame(atlases: List<ImageBitmap>,frame: Int,re
 }
 
 @Composable
-fun IdentityAvatar(modifier: Modifier=Modifier) {
+fun IdentityAvatar(modifier: Modifier=Modifier,size: Int=40,registerAnchor: Boolean=true) {
     val anchor=LocalIdentity.current
     val context=LocalContext.current
     val still=remember {context.assets.open("identity/guest-still.png").use {BitmapFactory.decodeStream(it).asImageBitmap()}}
     val tint=MaterialTheme.colorScheme.onSecondary
     val background=MaterialTheme.colorScheme.secondary
+    if(!registerAnchor) {
+        Box(modifier.size(size.dp)) {
+            if(anchor.signedIn)ProfileAvatar(anchor.avatar,size)
+            else Canvas(Modifier.fillMaxSize().clip(CircleShape)){drawCircle(background);drawImage(still,dstSize=IntSize(this.size.width.roundToInt(),this.size.height.roundToInt()),colorFilter=ColorFilter.tint(tint))}
+        }
+        return
+    }
     val layer=rememberGraphicsLayer()
     var recorded by remember {mutableStateOf(false)}
     LaunchedEffect(recorded,anchor.signedIn,anchor.avatar,tint) {
         if(recorded) {withFrameNanos { };anchor.image=layer.toImageBitmap()}
     }
-    Box(modifier.size(40.dp).onGloballyPositioned {anchor.bounds=it.boundsInRoot()}.drawWithContent {
+    Box(modifier.identitySharedElement().size(size.dp).onGloballyPositioned {anchor.bounds=it.boundsInRoot()}.drawWithContent {
         layer.record {this@drawWithContent.drawContent()};if(!anchor.playing)drawLayer(layer)
         if(!recorded)recorded=true
     }) {
-        if(anchor.signedIn)ProfileAvatar(anchor.avatar,40)
-        else Canvas(Modifier.fillMaxSize().clip(CircleShape)) {drawCircle(background);drawImage(still,dstSize=IntSize(size.width.roundToInt(),size.height.roundToInt()),colorFilter=ColorFilter.tint(tint))}
+        if(anchor.signedIn)ProfileAvatar(anchor.avatar,size)
+        else Canvas(Modifier.fillMaxSize().clip(CircleShape)) {drawCircle(background);drawImage(still,dstSize=IntSize(this.size.width.roundToInt(),this.size.height.roundToInt()),colorFilter=ColorFilter.tint(tint))}
     }
 }
 
@@ -110,10 +117,10 @@ fun IdentityIntroHost(signedIn: Boolean,avatar: Int,content: @Composable ()->Uni
                         clipPath(clip) {
                             if(pixels.value<1f) {
                                 drawRect(background,rect.topLeft,rect.size)
-                                val source=coarse.getOrNull((pixels.value*coarse.size).toInt().coerceAtMost(coarse.lastIndex.coerceAtLeast(0)))?:anchor.image
+                                val source=coarse.getOrNull(PixelReveal.sample(pixels.value,coarse.size))?:anchor.image
                                 if(source!=null) {
                                     val tiles=Path()
-                                    for(row in 0..7)for(column in 0..7)if(((row*8+column)*37%64)/64f<=pixels.value)tiles.addRect(Rect(rect.left+rect.width*column/8,rect.top+rect.height*row/8,rect.left+rect.width*(column+1)/8,rect.top+rect.height*(row+1)/8))
+                                    for(row in 0..7)for(column in 0..7)if(PixelReveal.tileVisible(row*8+column,pixels.value))tiles.addRect(Rect(rect.left+rect.width*column/8,rect.top+rect.height*row/8,rect.left+rect.width*(column+1)/8,rect.top+rect.height*(row+1)/8))
                                     clipPath(tiles) {drawImage(source,dstOffset=IntOffset(rect.left.roundToInt(),rect.top.roundToInt()),dstSize=IntSize(diameter.roundToInt(),diameter.roundToInt()),filterQuality=FilterQuality.None)}
                                 }
                             } else if(!signedIn&&atlases.isNotEmpty()) {

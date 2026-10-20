@@ -14,6 +14,7 @@ import com.semiovert.app.core.data.SampleLibrary
 import com.semiovert.app.core.designsystem.ArticleFeed
 import com.semiovert.app.core.designsystem.*
 import com.semiovert.app.core.designsystem.wave.WaveArticleDeck
+import com.semiovert.app.core.designsystem.wave.WaveDeckMath
 import androidx.compose.animation.core.*
 import kotlinx.coroutines.launch
 import com.semiovert.app.core.model.ReadingDuration
@@ -34,19 +35,24 @@ fun CategoryScreen(onNavigate: (Destination)->Unit,onArticle: (String)->Unit,mod
     val inheritedRoll=LocalFlowRoll.current
     val motion=LocalMotionEnabled.current
     var changing by remember {mutableStateOf(false)}
-    val cycle: ()->Unit={if(!changing)scope.launch {changing=true;try {roll.animateTo(1f,tween(if(motion)1000 else 0,easing=FastOutLinearInEasing));model.cycle();roll.animateTo(0f,tween(if(motion)1000 else 0,easing=SoEase))}finally {changing=false}};Unit}
+    var phase by remember {mutableStateOf(FlowPhase.IDLE)}
+    val cycle: ()->Unit={if(!changing)scope.launch {changing=true;try {
+        phase=FlowPhase.EXIT;roll.animateTo(1f,tween(if(motion)SceneMotion.CATEGORY_EXIT_MS else 0,easing=LinearEasing))
+        model.cycle();phase=FlowPhase.ENTER;roll.animateTo(0f,tween(if(motion)SceneMotion.CATEGORY_ENTER_MS else 0,easing=LinearEasing))
+    }finally {phase=FlowPhase.IDLE;changing=false}};Unit}
     BrowseScene(Destination.CATEGORY,duration.label,onNavigate,onPrimary=cycle) {
-        CompositionLocalProvider(LocalFlowRoll provides maxOf(inheritedRoll,roll.value)) {
+        CompositionLocalProvider(LocalFlowRoll provides maxOf(inheritedRoll,roll.value),LocalFlowPhase provides if(changing)phase else LocalFlowPhase.current) {
         lists.SaveableStateProvider(durationName) {
             val articles=SampleLibrary.inDuration(duration)
             var selected by rememberSaveable {mutableIntStateOf(0)}
             BoxWithConstraints {
                 if(motion&&LocalDensity.current.fontScale<=1.2f&&maxHeight>=440.dp&&maxHeight>maxWidth&&articles.isNotEmpty()) {
-                    WaveArticleDeck(articles,selected,{selected=it},onArticle)
+                    WaveArticleDeck(articles,selected,{selected=it},onArticle,visibleLimit=WaveDeckMath.CATEGORY_VISIBLE,
+                        frontTop=WaveDeckMath.restingFrontTop(maxWidth.value,maxHeight.value,maxHeight.value).dp)
                 } else {
                     CompositionLocalProvider(LocalMotionEnabled provides false) {
                         ArticleFeed(articles,rememberLazyListState(initialFirstVisibleItemIndex=selected),"feed-category",onArticle,topPadding=64,
-                            emptyMessage="这个时长还没有文章",emptyHint="点主圆，换一个阅读时长。")
+                            emptyMessage="这个时长还没有文章",emptyHint="点主圆，换一个阅读时长。",categoryCards=true)
                     }
                 }
             }

@@ -21,6 +21,7 @@ import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
 import com.semiovert.app.core.designsystem.*
+import com.semiovert.app.core.designsystem.wave.mainCircleOverlay
 import com.semiovert.app.core.model.NavigationShortcut
 import kotlinx.coroutines.*
 import kotlin.math.roundToInt
@@ -37,7 +38,8 @@ fun BrowseScene(
     val keyboard = LocalSoftwareKeyboardController.current
     val navigate: (Destination) -> Unit = { keyboard?.hide(); navigationOpen=false; onNavigate(it) }
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize()) {content()}
+        Box(Modifier.fillMaxWidth().align(Alignment.TopCenter).zIndex(2f).statusBarsPadding()) {
             if (header != null) header { navigationOpen=true }
             else Row(Modifier.fillMaxWidth().zIndex(if(destination==Destination.HOME)1f else 0f).heightIn(min=64.dp).padding(horizontal=12.dp),verticalAlignment=Alignment.CenterVertically) {
                 TextButton(onClick={navigationOpen=true},modifier=Modifier.semantics { contentDescription="打开页面导航" }) {
@@ -46,12 +48,10 @@ fun BrowseScene(
                 }
                 Spacer(Modifier.weight(1f))
                 IconButton(onClick={navigate(Destination.SEARCH)},modifier=Modifier.size(48.dp)) {
-                    Box(Modifier.size(40.dp).clip(CircleShape).background(MaterialTheme.colorScheme.secondary),contentAlignment=Alignment.Center) {
-                        IdentityAvatar(Modifier.semantics {contentDescription="打开搜索"})
-                    }
+                    // The avatar owns its circular backing; the button must not leave a disk behind.
+                    IdentityAvatar(Modifier.semantics {contentDescription="打开搜索"})
                 }
             }
-            Box(Modifier.weight(1f)) { content() }
         }
         MainCircle(destination,navigate,onPrimary ?: {navigationOpen=true}, {navigationOpen=true},maxWidth,maxHeight)
         ShortcutCircles(destination,navigate,maxWidth,maxHeight)
@@ -130,7 +130,7 @@ private fun BoxScope.MainCircle(destination: Destination,onNavigate: (Destinatio
             }
         }
         Surface(shape=CircleShape,color=MaterialTheme.colorScheme.primaryContainer,shadowElevation=6.dp,
-            modifier=Modifier.size(56.dp).testTag("main-circle").semantics {
+            modifier=Modifier.size(56.dp).mainCircleOverlay().testTag("main-circle").semantics {
                 role=Role.Button
                 contentDescription=destination.label+"主圆"
                 stateDescription=when(destination) { Destination.CATEGORY->"点按切换阅读时长";Destination.SEARCH->"点按切换文章与作者";else->"点按打开页面导航" }

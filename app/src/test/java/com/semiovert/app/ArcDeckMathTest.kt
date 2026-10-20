@@ -6,7 +6,23 @@ import org.junit.Test
 import kotlin.math.*
 
 class ArcDeckMathTest {
-    @Test fun selectedCardIsCompleteAndLargestAcrossPortraitPhoneSizes() {
+    @Test fun bothEdgesStartGentlyAndSpreadTravelAcrossAWholeSlot() {
+        val g=ArcDeckMath.geometry(411f,780f)
+        assertEquals(1f,ArcDeckMath.EDGE_CLEAR_DISTANCE-ArcDeckMath.EDGE_START_DISTANCE,0f)
+        for(direction in listOf(-1f,1f)) {
+            val edge=ArcDeckMath.frames(11,-direction*4f,g).single {it.article==0}
+            val beginning=ArcDeckMath.frames(11,-direction*4.02f,g).single {it.article==0}
+            assertTrue(abs(beginning.centerY-edge.centerY)<g.cardHeight*.01f)
+            var previous=edge
+            for(step in 1..40) {
+                val next=ArcDeckMath.frames(11,-direction*(4f+step*.02f),g).firstOrNull {it.article==0} ?: break
+                assertTrue("The edge must not jump a large distance in a small drag",abs(next.centerY-previous.centerY)<g.cardHeight*.06f)
+                assertEquals(1f,next.alpha,0f)
+                previous=next
+            }
+        }
+    }
+    @Test fun centrePoseAndBothLeftReturningHalvesFitPortraitPhoneSizes() {
         for((w,h) in listOf(320f to 620f,360f to 660f,411f to 780f,480f to 860f)) {
             val g=ArcDeckMath.geometry(w,h)
             assertEquals("Cover cards follow the square reference",g.cardWidth,g.cardHeight,.0001f)
@@ -17,36 +33,35 @@ class ArcDeckMathTest {
             assertTrue(selected.centerX+g.cardWidth/2f<=w)
             assertTrue(selected.centerY-g.cardHeight/2f>=0f)
             assertTrue(selected.centerY+g.cardHeight/2f<=h)
-            assertTrue(frames.filter {it.article!=3}.all {it.scale<selected.scale})
+            assertTrue("All cards keep the same size",frames.all {it.scale==1f})
             assertTrue(frames.filter {it.distance<0f}.all {it.centerX<selected.centerX})
-            assertTrue(frames.filter {it.distance>0f}.all {it.centerX>selected.centerX})
+            assertTrue(frames.filter {it.distance>0f}.all {it.centerX<selected.centerX})
         }
     }
-    @Test fun upperCardsRecedeLeftAndLowerCardsRecedeRightWithoutChangingTheSequenceLayers() {
+    @Test fun bothHalvesFollowTheSameEllipseWithoutChangingTheSequenceLayers() {
         val g=ArcDeckMath.geometry(411f,780f)
         val frames=ArcDeckMath.frames(11,0f,g)
         var lastLeft=g.focusX
         var lastRight=g.focusX
         val selected=frames.single {it.article==0}
-        val selectedTop=selected.centerY-g.cardHeight/2f
-        val selectedBottom=selected.centerY+g.cardHeight/2f
         for(step in 1..4) {
             val below=frames.single {it.article==step}
             val above=frames.single {it.article==11-step}
             assertTrue(above.centerX<lastLeft)
-            assertTrue(below.centerX>lastRight)
-            assertEquals(g.focusX*2f,above.centerX+below.centerX,.001f)
+            assertTrue(below.centerX<lastRight)
+            assertEquals(above.centerX,below.centerX,.001f)
             assertEquals(g.focusY*2f,above.centerY+below.centerY,.001f)
             assertEquals(above.scale,below.scale,.0001f)
             assertTrue("Earlier cards remain behind the selected article",above.layer<selected.layer)
             assertTrue("Later cards remain above it in sequence",below.layer>selected.layer)
-            assertTrue(above.centerY+g.cardHeight*above.scale/2f<=selectedTop-ArcDeckMath.CARD_GAP+.001f)
-            assertTrue(below.centerY-g.cardHeight*below.scale/2f>=selectedBottom+ArcDeckMath.CARD_GAP-.001f)
+            val x=(below.centerX-(g.focusX-g.radiusX))/g.radiusX
+            val y=(below.centerY-g.focusY)/g.radiusY
+            assertEquals(1f,x*x+y*y,.001f)
             lastLeft=above.centerX
             lastRight=below.centerX
         }
     }
-    @Test fun theCentreWindowRemainsOpenWhileAdjacentCardsExchangePlaces() {
+    @Test fun neighbouringCardsOverlapWithoutReservingACentreWindow() {
         val g=ArcDeckMath.geometry(411f,780f)
         for(step in 0..40) {
             val frames=ArcDeckMath.frames(11,step/40f,g)
@@ -55,7 +70,7 @@ class ArcDeckMathTest {
             assertTrue(earlier.layer<later.layer)
             val earlierBottom=earlier.centerY+ArcDeckMath.waveY(earlier.distance,earlier.waveOffset)+g.cardHeight*earlier.scale/2f
             val laterTop=later.centerY+ArcDeckMath.waveY(later.distance,later.waveOffset)-g.cardHeight*later.scale/2f
-            assertTrue("No z-index promotion is needed to expose the moving cards",earlierBottom<=laterTop+.001f)
+            assertTrue("The ring remains continuous through the centre",earlierBottom>laterTop)
         }
     }
     @Test fun neighbourWaveStartsImmediatelyDecaysWithDistanceAndProtectsTheFocus() {
@@ -71,7 +86,7 @@ class ArcDeckMathTest {
         assertEquals("The first and second neighbour use the same falloff as the web",2.5f,above.waveOffset/aboveSecond.waveOffset,.001f)
         assertTrue(ArcDeckMath.waveX(above.distance,above.waveOffset)<0f)
         assertTrue(ArcDeckMath.waveY(above.distance,above.waveOffset)<0f)
-        assertTrue(ArcDeckMath.waveX(below.distance,below.waveOffset)>0f)
+        assertTrue(ArcDeckMath.waveX(below.distance,below.waveOffset)<0f)
         assertTrue(ArcDeckMath.waveY(below.distance,below.waveOffset)>0f)
         for(distance in listOf(-.65f,-.56f,0f,.56f,.65f)) {
             assertEquals("A lingering spring never moves the focus",0f,ArcDeckMath.waveX(distance,1000f),0f)
@@ -87,8 +102,8 @@ class ArcDeckMathTest {
             assertTrue(frames.size in 9..10)
             for(pose in frames) {
                 assertTrue(pose.article in 0..10)
-                assertTrue(abs(pose.distance)<=ArcDeckMath.VISIBLE_DISTANCE)
-                assertTrue(pose.alpha in 0f..1f)
+                assertTrue(abs(pose.distance)<=5.5f)
+                assertEquals("Cards leave by motion, never fading",1f,pose.alpha,0f)
                 assertTrue(pose.scale in .55f..1f)
                 assertTrue(pose.centerX.isFinite()&&pose.centerY.isFinite())
             }
@@ -125,5 +140,70 @@ class ArcDeckMathTest {
         assertEquals(1,ArcDeckMath.focus(.58f,0))
         assertEquals(1,ArcDeckMath.focus(.46f,1))
         assertEquals(0,ArcDeckMath.focus(.42f,1))
+    }
+    @Test fun recyclingHappensOnlyAfterTheWholeCardHasClearedTheScreen() {
+        for((w,h) in listOf(320f to 620f,411f to 780f,800f to 1200f)) {
+            val g=ArcDeckMath.geometry(w,h)
+            var lastY=Float.NEGATIVE_INFINITY
+            for(d in listOf(4.1f,4.3f,4.5f,4.7f)) {
+                val bottom=ArcDeckMath.frames(11,-d,g).single {it.article==0}
+                assertTrue(bottom.centerY>lastY)
+                assertEquals(1f,bottom.alpha,0f)
+                lastY=bottom.centerY
+            }
+            assertFalse(ArcDeckMath.frames(11,-5f,g).any {it.article==0})
+            assertFalse(ArcDeckMath.frames(11,-5.49f,g).any {it.article==0})
+            assertFalse(ArcDeckMath.frames(11,-5.51f,g).any {it.article==0})
+        }
+    }
+    @Test fun approvedCentralRingCoordinatesAndRestingVisibleSlotsStayUnchanged() {
+        val w=411f;val h=780f
+        val g=ArcDeckMath.geometry(w,h)
+        val resting=ArcDeckMath.frames(11,0f,g)
+        assertEquals(9,resting.size)
+        assertTrue(resting.all {abs(it.distance)<=4f})
+        for(position in listOf(0f,.25f,.5f,.75f)) {
+            for(pose in ArcDeckMath.frames(11,position,g).filter {abs(it.distance)<=ArcDeckMath.EDGE_START_DISTANCE}) {
+                val angle=pose.distance*.30f
+                assertEquals(w*.48f-w*.30f*(1f-cos(angle)),pose.centerX,.001f)
+                assertEquals(h*.53f+h*.34f*sin(angle),pose.centerY,.001f)
+                assertEquals(1f,pose.scale,0f)
+                assertEquals(pose.distance,pose.layer,0f)
+            }
+        }
+    }
+    @Test fun tiltTravelsInOppositeDirectionsAndDecaysThroughNeighbours() {
+        fun tilt(page: Int)=ArcDeckMath.neighbourTilt(page.toFloat())
+        assertEquals(0f,tilt(0),0f)
+        assertEquals(-20f,tilt(1),0f)
+        assertEquals(-6f,tilt(2),0f)
+        assertEquals(0f,tilt(3),0f)
+        assertTrue("Back cards lean away; front cards lean toward the viewer",tilt(-1)>0f&&tilt(1)<0f)
+        for(page in 2..5) {
+            assertTrue(abs(tilt(page))<=abs(tilt(page-1)))
+            assertEquals(-tilt(page),tilt(-page),.001f)
+        }
+        assertTrue(ArcDeckMath.FOCUS_ELEVATION>0f)
+    }
+    @Test fun focusRisesEnoughToExposeItsBottomWithoutLeavingTheViewport() {
+        val g=ArcDeckMath.geometry(411f,780f)
+        val poses=ArcDeckMath.frames(11,0f,g)
+        val selected=poses.single {it.article==0}
+        val next=poses.single {it.article==1}
+        val angle=4f*PI.toFloat()/180f
+        val nextHalfHeight=g.cardHeight*(cos(angle)+sin(angle))/2f
+        val lift=ArcDeckMath.focusLift(g)
+        assertTrue(lift>0f)
+        assertTrue(selected.centerY-lift-g.cardHeight/2f>=32f-.001f)
+        assertTrue(selected.centerY-lift+g.cardHeight/2f<=next.centerY-nextHalfHeight)
+        assertTrue(poses.all {it.scale==1f&&it.layer==it.distance})
+    }
+    @Test fun focusMovesRightWhileKeepingAScreenMarginAndTheBaseRingUnchanged() {
+        val g=ArcDeckMath.geometry(411f,780f)
+        val original=ArcDeckMath.frames(11,0f,g)
+        val shift=ArcDeckMath.focusShiftX(g)
+        assertTrue(shift>0f)
+        assertTrue(g.focusX+shift+g.cardWidth/2f<=g.width-16f+.001f)
+        assertEquals(original,ArcDeckMath.frames(11,0f,g))
     }
 }

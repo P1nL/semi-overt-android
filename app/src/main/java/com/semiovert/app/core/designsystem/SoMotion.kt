@@ -15,6 +15,8 @@ import androidx.compose.ui.platform.LocalContext
 import kotlin.math.hypot
 
 val SoEase = CubicBezierEasing(.22f,1f,.36f,1f)
+/** Scene travel uses the whole interval instead of spending its last half nearly stationary. */
+val SoSceneEase = CubicBezierEasing(.42f,0f,.58f,1f)
 val LocalMotionEnabled = staticCompositionLocalOf { true }
 /** One shared flow coordinate: 0 is resting, 1 is rolled out below the viewport. */
 val LocalFlowRoll = compositionLocalOf { 0f }

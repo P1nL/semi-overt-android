@@ -3,7 +3,8 @@ package com.semiovert.app.core.designsystem.wave
 import androidx.compose.animation.core.spring
 import kotlin.math.*
 
-data class WaveDeckGeometry(val width: Float,val height: Float,val cardSize: Float,val frontTop: Float,val stackStep: Float) {
+data class WaveDeckGeometry(val width: Float,val height: Float,val cardSize: Float,val frontTop: Float,val stackStep: Float,
+    val uniformTopGap: Float?=null) {
     val frontHeight: Float get()=height-frontTop
     val frontY: Float get()=frontTop+frontHeight/2f
     val outsideY: Float get()=height+frontHeight/2f+24f
@@ -20,6 +21,13 @@ object WaveDeckMath {
     const val RETURN_FRACTION=.14f
     const val EXIT_FRACTION=1f-RETURN_FRACTION
     const val DOWNWARD_GAIN=1.25f
+    const val SEARCH_VISIBLE=4
+    const val CATEGORY_VISIBLE=7
+    const val PROFILE_VISIBLE=5
+    const val RESTING_VISIBLE_FRACTION=.7f
+    const val TOP_INSET=16f
+    const val BOTTOM_OVERFLOW=160f
+    const val MAX_ELASTIC_PULL=120f
 
     fun index(page: Int,count: Int)=((page%count)+count)%count
     fun nearestPage(article: Int,position: Float,count: Int): Int {
@@ -31,7 +39,8 @@ object WaveDeckMath {
     private fun verticalReference(width: Float,height: Float)=min(width*.82f,min(380f,height*.65f))
     // Preserve the established top-edge spacing without narrowing cards farther back.
     private fun stackTop(depth: Float,g: WaveDeckGeometry)=
-        g.frontTop-depth*g.stackStep+verticalReference(g.width,g.height)*min(depth*.05f,.28f)/2f
+        g.uniformTopGap?.let {g.frontTop-depth*it}
+            ?: (g.frontTop-depth*g.stackStep+verticalReference(g.width,g.height)*min(depth*.05f,.28f)/2f)
 
     fun geometry(width: Float,height: Float,count: Int): WaveDeckGeometry {
         val card=min(width*.90f,min(420f,height*.65f))
@@ -43,11 +52,39 @@ object WaveDeckMath {
     }
 
     fun dragDelta(deltaPx: Float,stepPx: Float)=deltaPx/stepPx*(if(deltaPx>0f)DOWNWARD_GAIN else 1f)
+    /** Match the reference category's three-card top gap, regardless of result count or crop. */
+    fun embeddedGeometry(width: Float,viewportHeight: Float,count: Int,referenceHeight: Float,frontTop: Float?=null,visibleLimit: Int=count): WaveDeckGeometry {
+        val reference=geometry(width,referenceHeight,3)
+        val gap=stackTop(0f,reference)-stackTop(1f,reference)
+        // Reserve space for the visible window, not for every article in the data set.
+        val visible=count.coerceAtMost(visibleLimit.coerceAtLeast(1))
+        val top=max(frontTop ?: (reference.frontTop-(referenceHeight-viewportHeight)),TOP_INSET+gap*(visible-1).coerceAtLeast(0))
+        return reference.copy(height=max(top+reference.frontHeight,viewportHeight),frontTop=top,
+            stackStep=gap,uniformTopGap=gap)
+    }
+    /** Expose the shared resting fraction without shortening the card itself. */
+    fun restingFrontTop(width: Float,viewportHeight: Float,referenceHeight: Float): Float =
+        viewportHeight-geometry(width,referenceHeight,3).frontHeight*RESTING_VISIBLE_FRACTION
+
+    /** Personal-page scrolling uses the same visible fraction as category and search. */
+    fun profileViewportHeight(width: Float,referenceHeight: Float,count: Int): Float {
+        val deck=embeddedGeometry(width,0f,count,referenceHeight,76f,PROFILE_VISIBLE)
+        // Elastic reserve stays offscreen and does not extend page scrolling.
+        return deck.frontTop+deck.frontHeight*RESTING_VISIBLE_FRACTION
+    }
+
+    /** A long upward pull stretches the whole deck, with resistance and a finite reserve. */
+    fun elasticPull(dragDp: Float,viewportHeight: Float): Float {
+        val excess=(-dragDp-viewportHeight*.45f).coerceAtLeast(0f)
+        return -MAX_ELASTIC_PULL*excess/(MAX_ELASTIC_PULL+excess)
+    }
     fun focus(position: Float,previous: Int)=if(abs(position-previous)>.56f)position.roundToInt() else previous
     fun target(position: Float,velocity: Float,stepPx: Float)=
         (position+(dragDelta(velocity,stepPx)*.10f).coerceIn(-.8f,.8f)).roundToInt()
 
-    fun frames(count: Int,position: Float,g: WaveDeckGeometry): List<WaveCardPose> = (0 until count).map {article ->
+    fun frames(count: Int,position: Float,g: WaveDeckGeometry,visibleLimit: Int=count): List<WaveCardPose> {
+        if(count==0)return emptyList()
+        val poses=(0 until count).map {article ->
         val distance=wrap(article-position,count)
         if(distance<=count-1f) {
             val slot=floor(distance).toInt().coerceAtMost(max(0,count-2))
@@ -79,6 +116,18 @@ object WaveDeckMath {
                     g.height-top,1f-retreat,returning=true)
             }
         }
+        }
+        val visible=visibleLimit.coerceIn(1,count)
+        if(visible==count)return poses
+        // The outgoing foreground occupies a slot until it leaves. Its replacement
+        // enters at the rear only during the hidden-transfer phase, without a pop.
+        return poses.filter { !it.returning&&(it.outgoing||wrap(it.article-position,count)<visible) }
+            .sortedByDescending {it.layer}.take(visible).map {pose ->
+                val depth=wrap(pose.article-position,count)
+                if(!pose.outgoing&&depth>visible-1f)
+                    pose.copy(alpha=smooth((visible-depth-EXIT_FRACTION)/RETURN_FRACTION))
+                else pose
+            }
     }
 }
 

@@ -27,8 +27,12 @@ class HomeArcDeckTest {
         }
         app.waitForIdle()
     }
-    @Test fun selectionIsExposedBetweenTheSequentialUpperAndLowerStacks() {
+    @Test fun focusRisesWhileNeighboursKeepTheirFullHeightAndRingPosition() {
         app.onNodeWithTag("home-arc").assertIsDisplayed()
+        app.waitUntil(10_000) {
+            !app.onNodeWithTag("article-forest").fetchSemanticsNode().config.contains(SemanticsProperties.Disabled)
+        }
+        app.waitForIdle()
         val root=app.onNodeWithTag("feed-home").fetchSemanticsNode().boundsInRoot
         val front=app.onNodeWithTag("article-forest").fetchSemanticsNode().boundsInRoot
         assertEquals("The new card is square",front.width,front.height,1f)
@@ -39,39 +43,34 @@ class HomeArcDeckTest {
         val above=app.onNodeWithTag("arc-card-letter",useUnmergedTree=true).fetchSemanticsNode().boundsInRoot
         val below=app.onNodeWithTag("arc-card-street",useUnmergedTree=true).fetchSemanticsNode().boundsInRoot
         assertTrue("Upper stack must stay left: ${above} / ${front}",above.center.x<front.center.x)
-        assertTrue("Lower stack must stay right: ${below} / ${front}",below.center.x>front.center.x)
-        assertTrue("Upper stack leaves the whole selected card visible",above.bottom<=front.top+1f)
-        assertTrue("Lower stack leaves the whole selected card visible",below.top>=front.bottom-1f)
+        assertTrue("Lower stack also returns left: ${below} / ${front}",below.center.x<front.center.x)
+        assertTrue("Previous neighbour must not be flattened",above.height>=front.height*.95f)
+        assertTrue("Following neighbour must not be flattened",below.height>=front.height*.95f)
+        assertTrue("Following neighbour makes room: $below / $front",below.top>=front.bottom-1f)
+        val density=app.activity.resources.displayMetrics.density
+        val g=ArcDeckMath.geometry(root.width/density,root.height/density)
+        assertEquals(root.left+(g.focusX+ArcDeckMath.focusShiftX(g))*density,front.center.x,2f)
+        assertEquals(root.top+(g.focusY-ArcDeckMath.focusLift(g))*density,front.center.y,2f)
+        val poses=ArcDeckMath.frames(SampleLibrary.articles.size,0f,g)
+        assertEquals(root.top+poses.single {it.article==1}.centerY*density,below.center.y,2f)
     }
-    @Test fun bothArcNeighboursHaveIndependentSpringsWithoutCoveringTheSelectedCard() {
+    @Test fun switchingFocusKeepsTheSameRiseAndCardSize() {
         app.onNodeWithTag("home-arc").assertIsDisplayed()
         val root=app.onNodeWithTag("feed-home").fetchSemanticsNode().boundsInRoot
         val density=app.activity.resources.displayMetrics.density
-        val step=ArcDeckMath.geometry(root.width/density,root.height/density).scrollStep*density
-        fun bounds(id: String)=app.onNodeWithTag("arc-card-"+id,useUnmergedTree=true).fetchSemanticsNode().boundsInRoot
-        app.mainClock.autoAdvance=false
-        try {
-            app.onNodeWithTag("home-arc").performTouchInput {
-                val start=Offset(width*.96f,height*.46f)
-                down(start);moveTo(start+Offset(0f,-step*.25f),400)
-            }
-            app.mainClock.advanceTimeByFrame()
-            val selected=bounds("forest");val upper=bounds("letter");val lower=bounds("street");val far=bounds("lamplight")
-            app.mainClock.advanceTimeBy(240)
-            val upperAfter=bounds("letter");val lowerAfter=bounds("street");val farAfter=bounds("lamplight")
-            assertEquals("The selected card stays directly under gesture control",selected,bounds("forest"))
-            assertTrue("Upper cards have their own outward spring",upperAfter.center.y<upper.center.y-1f)
-            assertTrue("Lower cards have their own outward spring",lowerAfter.center.y>lower.center.y+1f)
-            assertTrue("The neighbouring crest is stronger than the farther card",
-                upper.center.y-upperAfter.center.y>(far.center.y-farAfter.center.y)*1.5f)
-            assertTrue(upperAfter.bottom<=selected.top+1f)
-            assertTrue(lowerAfter.top>=selected.bottom-1f)
-        } finally {
-            app.onNodeWithTag("home-arc").performTouchInput {advanceEventTime(250);up()}
-            app.mainClock.autoAdvance=true;app.waitForIdle()
+        val g=ArcDeckMath.geometry(root.width/density,root.height/density)
+        for((index,id) in listOf(0 to "forest",1 to "street",0 to "forest")) {
+            app.onNodeWithTag("feed-home").performScrollToIndex(index)
+            app.waitForIdle()
+            val selected=app.onNodeWithTag("article-"+id).fetchSemanticsNode().boundsInRoot
+            assertEquals(root.left+(g.focusX+ArcDeckMath.focusShiftX(g))*density,selected.center.x,2f)
+            assertEquals(root.top+(g.focusY-ArcDeckMath.focusLift(g))*density,selected.center.y,2f)
+            assertEquals(g.cardWidth*density,selected.width,2f)
+            assertEquals(g.cardHeight*density,selected.height,2f)
         }
         app.onNodeWithTag("feed-home").assertHomeResting(0)
-        app.onNodeWithTag("article-forest").performClick()
+        // The main card rises above the following card instead of flattening its neighbours.
+        app.onNodeWithTag("article-forest").performTouchInput {click(Offset(width*.5f,height*.9f))}
         app.onNodeWithTag("reader-screen").assertIsDisplayed()
     }
     @Test fun transparentHeaderRemainsTappableAboveOverflowingCards() {

@@ -23,10 +23,11 @@ import androidx.compose.ui.platform.LocalDensity
 fun ArticleFeed(
     articles: List<Article>, listState: LazyListState, listTag: String,
     onArticle: (String) -> Unit, topPadding: Int = 16, emptyMessage: String = "暂时没有文章",
-    emptyHint: String = "试试其他阅读时长。", modifier: Modifier = Modifier,
+    emptyHint: String = "试试其他阅读时长。", modifier: Modifier = Modifier, categoryCards: Boolean=false,
 ) {
+    val expansion=LocalArticleExpansion.current
     var unavailable by remember {mutableStateOf(false)}
-    if(articles.isNotEmpty()&&(listTag=="feed-home"||listTag=="feed-category")&&LocalMotionEnabled.current&&LocalDensity.current.fontScale<=1.2f&&!unavailable) {
+    if(!categoryCards&&articles.isNotEmpty()&&(listTag=="feed-home"||listTag=="feed-category")&&LocalMotionEnabled.current&&LocalDensity.current.fontScale<=1.2f&&!unavailable) {
         SolidArticleFeed(articles,listTag,onArticle,{unavailable=true},modifier)
         return
     }
@@ -38,10 +39,15 @@ fun ArticleFeed(
             Text(emptyHint,Modifier.padding(top=8.dp),style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
         }
     } else {
-        LazyColumn(state=listState, modifier=modifier.fillMaxSize().testTag(listTag),
+        LazyColumn(state=listState,userScrollEnabled=expansion?.active!=true,modifier=modifier.fillMaxSize().testTag(listTag),
             contentPadding=PaddingValues(start=20.dp,end=20.dp,top=topPadding.dp,bottom=128.dp),
             verticalArrangement=Arrangement.spacedBy(16.dp)) {
-            items(articles,key={it.id}) { article -> ArticleCard(article,onArticle) }
+            itemsIndexed(articles,key={_,it->it.id}) { index,article ->
+                if(categoryCards)CoverArticleCard(article,true,Modifier.fillMaxWidth().aspectRatio(.8f).testTag("article-"+article.id),
+                    "wave-cover-"+article.id,topAligned=true,squareBottom=true,shortBottomBlur=true,onClick={onArticle(article.id)},
+                    exitRank=(index-if(index>articles.indexOfFirst {it.id==expansion?.source?.article?.id})1 else 0).coerceAtLeast(0))
+                else ArticleCard(article,onArticle)
+            }
             item("offline-note") { Text("本地原创示例 · 插画与内容仅用于交互预览",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.padding(vertical=12.dp)) }
         }
     }

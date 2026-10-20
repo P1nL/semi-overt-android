@@ -24,9 +24,14 @@ fun HomeScreen(onNavigate: (Destination)->Unit,onArticle: (String)->Unit,model: 
     val ready=LocalIntroReady.current
     val entrance=remember {Animatable(if(firstEntrancePlayed||!motion)0f else 1f)}
     val inherited=LocalFlowRoll.current
-    LaunchedEffect(ready,motion) {if(ready) {entrance.animateTo(0f,tween(if(motion)1000 else 0,easing=SoEase));firstEntrancePlayed=true}}
+    val inheritedPhase=LocalFlowPhase.current
+    val entry=LocalHomeEntry.current
+    var handledEntry by rememberSaveable {mutableIntStateOf(0)}
+    LaunchedEffect(entry){if(entry!=handledEntry){articleIndex=0;handledEntry=entry}}
+    LaunchedEffect(ready,motion) {if(ready) {entrance.animateTo(0f,tween(if(motion)SceneMotion.HOME_ENTER_MS else 0,easing=LinearEasing));firstEntrancePlayed=true}}
     BrowseScene(Destination.HOME,"本地示例",onNavigate) {
-        CompositionLocalProvider(LocalFlowRoll provides maxOf(inherited,entrance.value)) {
+        CompositionLocalProvider(LocalFlowRoll provides if(inheritedPhase==FlowPhase.EXIT)inherited else maxOf(inherited,entrance.value),
+            LocalFlowPhase provides if(inheritedPhase==FlowPhase.EXIT)FlowPhase.EXIT else if(!firstEntrancePlayed)FlowPhase.ENTER else inheritedPhase) {
         BoxWithConstraints {
             if(motion&&LocalDensity.current.fontScale<=1.2f&&maxHeight>=440.dp&&maxHeight>maxWidth&&model.articles.isNotEmpty()) {
                 ArcArticleDeck(model.articles,articleIndex,{articleIndex=it},onArticle)
