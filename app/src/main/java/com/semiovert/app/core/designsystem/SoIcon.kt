@@ -17,6 +17,12 @@ enum class SoSymbol { HOME, CATEGORY, SEARCH, PERSON, ARROW, CLOSE, CONTENTS, CL
 @Composable
 fun SoIcon(symbol: SoSymbol, description: String? = null, modifier: Modifier = Modifier, tint: Color = MaterialTheme.colorScheme.onSurface) {
     Canvas(modifier.size(24.dp).then(if (description == null) Modifier else Modifier.semantics { contentDescription = description })) {
+        drawSoIcon(symbol,tint)
+    }
+}
+
+/** Shared endpoint drawing keeps the morph's resting icons identical to ordinary icons. */
+internal fun DrawScope.drawSoIcon(symbol: SoSymbol,tint: Color) {
         scale(size.width / 24f, size.height / 24f, pivot = Offset.Zero) {
             val stroke = Stroke(width = 1.65f, cap = StrokeCap.Round, join = StrokeJoin.Round)
             fun line(x1: Float, y1: Float, x2: Float, y2: Float) = drawLine(tint, Offset(x1, y1), Offset(x2, y2), 1.65f, StrokeCap.Round)
@@ -38,5 +44,4 @@ fun SoIcon(symbol: SoSymbol, description: String? = null, modifier: Modifier = M
                 SoSymbol.BOOK -> { path(12f to 5f,4f to 3f,4f to 19f,12f to 21f,20f to 19f,20f to 3f,12f to 5f,12f to 21f) }
             }
         }
-    }
 }

@@ -7,6 +7,17 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class PageHandoffTest {
+    @Test fun readerNavigationSlidesOutInFourHundredMillisecondsAndOverlapsEachPrimaryPage() {
+        for(page in Destination.entries) {
+            val handoff=PageHandoff.between("reader/{articleId}",page.route)!!
+            assertNull(handoff.from)
+            assertEquals(page,handoff.to)
+            assertEquals(400,handoff.exitMillis)
+            assertEquals(200,handoff.enterDelayMillis)
+            assertEquals(200,handoff.overlapMillis)
+            assertTrue(handoff.totalMillis>handoff.exitMillis)
+        }
+    }
     @Test fun homeExitKeepsItsDurationAndOverlapsCategoryEntrance() {
         val handoff=PageHandoff(Destination.HOME,Destination.CATEGORY)
         assertEquals(SceneMotion.HOME_EXIT_MS,handoff.exitMillis)

@@ -185,25 +185,47 @@ class ArcDeckMathTest {
         }
         assertTrue(ArcDeckMath.FOCUS_ELEVATION>0f)
     }
-    @Test fun focusRisesEnoughToExposeItsBottomWithoutLeavingTheViewport() {
-        val g=ArcDeckMath.geometry(411f,780f)
-        val poses=ArcDeckMath.frames(11,0f,g)
-        val selected=poses.single {it.article==0}
-        val next=poses.single {it.article==1}
-        val angle=4f*PI.toFloat()/180f
-        val nextHalfHeight=g.cardHeight*(cos(angle)+sin(angle))/2f
-        val lift=ArcDeckMath.focusLift(g)
-        assertTrue(lift>0f)
-        assertTrue(selected.centerY-lift-g.cardHeight/2f>=32f-.001f)
-        assertTrue(selected.centerY-lift+g.cardHeight/2f<=next.centerY-nextHalfHeight)
-        assertTrue(poses.all {it.scale==1f&&it.layer==it.distance})
+    @Test fun cardsThatFitPullInPlaceWithoutRecenteringTheQueue() {
+        val g=ArcDeckMath.geometry(411f,914f)
+        for(article in listOf(0,1,2)) {
+            assertEquals(0f,ArcDeckMath.pullPosition(article,0f,11,g,100f,802f),0f)
+        }
     }
-    @Test fun focusMovesRightWhileKeepingAScreenMarginAndTheBaseRingUnchanged() {
-        val g=ArcDeckMath.geometry(411f,780f)
+    @Test fun edgeCardsMoveOnlyAsFarAsTheirNearestSafeBoundary() {
+        for((w,h) in listOf(360f to 720f,411f to 914f)) {
+            val g=ArcDeckMath.geometry(w,h)
+            val top=100f;val bottom=h-112f
+            assertTrue(ArcDeckMath.canPull(g,top,bottom))
+            for(article in listOf(7,8,4)) {
+                val target=ArcDeckMath.pullPosition(article,0f,11,g,top,bottom)
+                assertTrue(abs(target)>.001f)
+                val pose=ArcDeckMath.frames(11,target,g).single {it.article==article}
+                assertTrue("Stop at the boundary, not at an integer centre slot",abs(pose.distance)>.01f)
+                val centerY=pose.centerY-ArcDeckMath.pullLift(pose.distance,g)
+                assertTrue(centerY-g.cardHeight/2f>=top-.002f)
+                assertTrue(centerY+g.cardHeight/2f<=bottom+.002f)
+                assertEquals(target,ArcDeckMath.pullPosition(article,target,11,g,top,bottom),.0001f)
+                val less=target-sign(target)*.01f
+                val short=ArcDeckMath.frames(11,less,g).single {it.article==article}
+                val shortY=short.centerY-ArcDeckMath.pullLift(short.distance,g)
+                assertTrue("Any shorter travel still clips the card",shortY-g.cardHeight/2f<top||shortY+g.cardHeight/2f>bottom)
+            }
+        }
+    }
+    @Test fun pullClearsTheFrontCardWithoutChangingItsLayerOrBaseRing() {
+        val g=ArcDeckMath.geometry(411f,914f)
         val original=ArcDeckMath.frames(11,0f,g)
-        val shift=ArcDeckMath.focusShiftX(g)
-        assertTrue(shift>0f)
-        assertTrue(g.focusX+shift+g.cardWidth/2f<=g.width-16f+.001f)
+        for(pose in original.filter {abs(it.distance)<=3f}) {
+            val next=original.single {it.distance==pose.distance+1f}
+            val bottom=pose.centerY-ArcDeckMath.pullLift(pose.distance,g)+g.cardHeight/2f
+            assertTrue("Lift, not z-order, exposes the card",bottom<=next.centerY-g.cardHeight/2f-15.99f)
+            assertTrue(pose.layer<next.layer)
+        }
+        assertEquals(g.width-16f,ArcDeckMath.pulledLeft(g)+g.cardWidth,.001f)
         assertEquals(original,ArcDeckMath.frames(11,0f,g))
+    }
+    @Test fun shortViewportUsesTheReadableFallbackWhenAWholeCardCannotFit() {
+        val g=ArcDeckMath.geometry(360f,440f)
+        assertFalse(ArcDeckMath.canPull(g,100f,220f))
     }
 }

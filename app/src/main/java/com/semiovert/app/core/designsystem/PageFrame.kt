@@ -49,13 +49,13 @@ fun SettingRow(label: String,detail: String?=null,onClick: ()->Unit) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConfirmationSheet(title: String,body: String,confirm: String="确定",onConfirm: ()->Unit,onDismiss: ()->Unit) {
-    ModalBottomSheet(modifier=Modifier.preferredFrameRate(MotionFramePolicy.TARGET_FPS),onDismissRequest=onDismiss,sheetState=rememberModalBottomSheetState(skipPartiallyExpanded=true)) {
+    SoBottomSheet(onDismissRequest=onDismiss) {close ->
         Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(24.dp)) {
             Text(title,style=MaterialTheme.typography.headlineSmall)
             Text(body,style=MaterialTheme.typography.bodyMedium,modifier=Modifier.padding(top=16.dp,bottom=24.dp))
             Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-                Button(onClick=onConfirm,modifier=Modifier.weight(1f).heightIn(min=48.dp)) {Text(confirm)}
-                OutlinedButton(onClick=onDismiss,modifier=Modifier.weight(1f).heightIn(min=48.dp)) {Text("取消")}
+                Button(onClick={close(onConfirm)},modifier=Modifier.weight(1f).heightIn(min=48.dp)) {Text(confirm)}
+                OutlinedButton(onClick={close {}},modifier=Modifier.weight(1f).heightIn(min=48.dp)) {Text("取消")}
             }
         }
     }

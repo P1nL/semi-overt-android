@@ -9,9 +9,15 @@ import androidx.compose.runtime.*
 import androidx.navigation.NavBackStackEntry
 import com.semiovert.app.core.designsystem.*
 
+internal const val ACCOUNT_COMPLETED_KEY="account-completed"
+internal const val ACCOUNT_SUCCESS_EXIT_MS=600
+internal const val SIDE_PAGE_MS=500
+internal const val READER_PAGE_NAVIGATION_KEY="reader-page-navigation"
+
 /** One handoff, two independent scene clocks. Scene-authored durations stay unchanged. */
-internal data class PageHandoff(val from: Destination, val to: Destination) {
-    val exitMillis = exitMillis(from)
+internal data class PageHandoff(val from: Destination?, val to: Destination) {
+    // A null primary source denotes a reader leaving through its navigation menu.
+    val exitMillis = from?.let {exitMillis(it)} ?: SceneMotion.READER_PAGE_EXIT_MS
     val enterMillis = enterMillis(to)
     // Start before the departing cards have cleared the viewport, not after an empty beat.
     val overlapMillis = minOf(exitMillis / 2, enterMillis)
@@ -20,8 +26,9 @@ internal data class PageHandoff(val from: Destination, val to: Destination) {
 
     companion object {
         fun between(from: String?, to: String?): PageHandoff? {
-            val source = Destination.entries.find { it.route == from } ?: return null
             val target = Destination.entries.find { it.route == to } ?: return null
+            if(from=="reader/{articleId}")return PageHandoff(null,target)
+            val source = Destination.entries.find { it.route == from } ?: return null
             return if (source == target) null else PageHandoff(source, target)
         }
 
@@ -80,19 +87,39 @@ internal fun AnimatedContentScope.SceneMotionContent(
 }
 
 internal fun AnimatedContentTransitionScope<NavBackStackEntry>.pageEnter(motion: Boolean, pop: Boolean = false): EnterTransition {
+    if(motion&&initialState.leavingReaderForPage()&&Destination.entries.any {it.route==targetState.destination.route}) {
+        // The reader's temporary drawing overlay stays above this new scene. Its own
+        // content clock handles entrance; the background is ready beneath the reader.
+        return EnterTransition.None
+    }
+    // The successful account sheet reveals its caller in place, without horizontal parallax.
+    if(pop&&initialState.savedStateHandle.get<Boolean>(ACCOUNT_COMPLETED_KEY)==true)return EnterTransition.None
     if (!motion || targetState.destination.route == "reader/{articleId}" ||
         (pop && initialState.destination.route == "reader/{articleId}")) return EnterTransition.None
     val handoff = PageHandoff.between(initialState.destination.route, targetState.destination.route)
     if (handoff != null) return fadeIn(tween(handoff.overlapMillis, handoff.enterDelayMillis, LinearEasing))
-    return if (pop) slideInHorizontally(tween(320, easing = SoEase)) { -it / 5 } + fadeIn(tween(320), initialAlpha = .9f)
-    else slideInHorizontally(tween(320, easing = SoEase)) { it }
+    return if (pop) slideInHorizontally(tween(SIDE_PAGE_MS, easing = SoSceneEase)) { -it / 5 } +
+        fadeIn(tween(SIDE_PAGE_MS, easing = SoSceneEase), initialAlpha = .9f)
+    else slideInHorizontally(tween(SIDE_PAGE_MS, easing = SoSceneEase)) { it }
 }
 
+private fun NavBackStackEntry.leavingReaderForPage()=
+    destination.route=="reader/{articleId}"&&savedStateHandle.get<Boolean>(READER_PAGE_NAVIGATION_KEY)==true
+
+/** Card opening / system back stay owned by ArticleExpansionHost, not this route slide. */
+internal fun AnimatedContentTransitionScope<NavBackStackEntry>.readerPageExit(motion: Boolean): ExitTransition =
+    if(motion&&initialState.leavingReaderForPage()&&Destination.entries.any {it.route==targetState.destination.route})
+        slideOutVertically(tween(SceneMotion.READER_PAGE_EXIT_MS,easing=SoSceneEase)) {it}
+    else ExitTransition.None
+
 internal fun AnimatedContentTransitionScope<NavBackStackEntry>.pageExit(motion: Boolean, pop: Boolean = false): ExitTransition {
+    if(motion&&pop&&initialState.savedStateHandle.get<Boolean>(ACCOUNT_COMPLETED_KEY)==true)
+        return slideOutVertically(tween(ACCOUNT_SUCCESS_EXIT_MS,easing=SoSceneEase)) {it}
     if (!motion || initialState.destination.route == "reader/{articleId}" ||
         (!pop && targetState.destination.route == "reader/{articleId}")) return ExitTransition.None
     val handoff = PageHandoff.between(initialState.destination.route, targetState.destination.route)
     if (handoff != null) return fadeOut(tween(handoff.overlapMillis, handoff.enterDelayMillis, LinearEasing))
-    return if (pop) slideOutHorizontally(tween(320, easing = SoEase)) { it }
-    else slideOutHorizontally(tween(320, easing = SoEase)) { -it / 5 } + fadeOut(tween(320), targetAlpha = .9f)
+    return if (pop) slideOutHorizontally(tween(SIDE_PAGE_MS, easing = SoSceneEase)) { it }
+    else slideOutHorizontally(tween(SIDE_PAGE_MS, easing = SoSceneEase)) { -it / 5 } +
+        fadeOut(tween(SIDE_PAGE_MS, easing = SoSceneEase), targetAlpha = .9f)
 }

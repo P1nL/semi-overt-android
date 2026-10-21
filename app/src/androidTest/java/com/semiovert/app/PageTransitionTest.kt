@@ -92,11 +92,18 @@ class PageTransitionTest {
             assertTrue(app.onNodeWithTag("settings").getUnclippedBoundsInRoot().left.value>0)
             app.runOnIdle {assertEquals(0f,samples.getValue(Destination.HOME).first,.001f)}
             app.mainClock.advanceTimeBy(300)
+            // Both directions must still be moving at 400ms, rather than finishing at the old 320ms.
+            assertTrue(app.onNodeWithTag("settings").getUnclippedBoundsInRoot().left.value>0f)
+            app.runOnIdle {assertNotEquals(Lifecycle.State.RESUMED,controller.currentBackStackEntry!!.lifecycle.currentState)}
+            app.mainClock.advanceTimeBy(200)
             app.runOnIdle {controller.popBackStack()}
             app.mainClock.advanceTimeBy(100)
             assertTrue(app.onNodeWithTag("home").getUnclippedBoundsInRoot().left.value<0)
             assertTrue(app.onNodeWithTag("settings").getUnclippedBoundsInRoot().left.value>0)
             app.mainClock.advanceTimeBy(300)
+            app.onNodeWithTag("settings").assertExists()
+            app.runOnIdle {assertNotEquals(Lifecycle.State.RESUMED,controller.currentBackStackEntry!!.lifecycle.currentState)}
+            app.mainClock.advanceTimeBy(200)
             app.runOnIdle {assertEquals(0f,samples.getValue(Destination.HOME).first,.001f)}
             app.onNodeWithTag("home").assertIsDisplayed()
             // The shared reader stays still, but a secondary page opened above it still slides.
@@ -106,12 +113,12 @@ class PageTransitionTest {
             app.mainClock.advanceTimeBy(100)
             assertEquals(0f,app.onNodeWithTag("reader").getUnclippedBoundsInRoot().left.value,.01f)
             assertTrue(app.onNodeWithTag("settings").getUnclippedBoundsInRoot().left.value>0)
-            app.mainClock.advanceTimeBy(300)
+            app.mainClock.advanceTimeBy(SIDE_PAGE_MS.toLong())
             app.runOnIdle {controller.popBackStack()}
             app.mainClock.advanceTimeBy(100)
             assertEquals(0f,app.onNodeWithTag("reader").getUnclippedBoundsInRoot().left.value,.01f)
             assertTrue(app.onNodeWithTag("settings").getUnclippedBoundsInRoot().left.value>0)
-            app.mainClock.advanceTimeBy(300)
+            app.mainClock.advanceTimeBy(SIDE_PAGE_MS.toLong())
             app.onNodeWithTag("reader").assertIsDisplayed()
         } finally {app.mainClock.autoAdvance=true}
     }

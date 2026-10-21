@@ -38,7 +38,7 @@ class MotionFlowTest {
         assertRequestedRate()
     }
 
-    @Test fun selectedCircleMergesAfterTheOtherCirclesBeforeNavigation() {
+    @Test fun radialMenuReturnsSoftlyBeforeNavigation() {
         val density=app.activity.resources.displayMetrics.density
         app.waitForIdle()
         app.mainClock.autoAdvance=false
@@ -49,7 +49,7 @@ class MotionFlowTest {
             app.onNodeWithTag("main-circle").performTouchInput {up()}
             app.mainClock.advanceTimeBy(240)
             app.onNodeWithTag("feed-home").assertExists()
-            app.onNodeWithTag("radial-category").assertDoesNotExist()
+            app.onNodeWithTag("radial-category").assertExists()
             app.onNodeWithTag("radial-search").assertExists()
             app.mainClock.advanceTimeBy(700)
         } finally {app.mainClock.autoAdvance=true}
@@ -79,6 +79,8 @@ class MotionFlowTest {
 
     @Test fun openingAndInitialFlowDoNotReplayWhenReturningOrRecreating() {
         app.onNodeWithTag("identity-intro").assertDoesNotExist()
+        app.onNodeWithTag("article-forest").performTouchInput {click(Offset(width*.5f,height*.08f))}
+        app.waitForIdle()
         app.onNodeWithTag("article-forest").performClick()
         androidx.test.espresso.Espresso.pressBack();app.waitForIdle()
         app.mainClock.autoAdvance=false
@@ -89,21 +91,41 @@ class MotionFlowTest {
         } finally {app.mainClock.autoAdvance=true}
     }
 
-    @Test fun calendarDetailExpandsAndReversesBackIntoAnEdgeDate() {
+    @Test fun calendarKeepsDetailOpenWhileChangingDateAndClosesSoftly() {
         app.activity.runOnUiThread {app.activity.setContent {MotionEnvironment {SoTheme {Column {RecordCalendar("lin",true,false,false,initialExpanded=true)}}}}}
         app.waitForIdle()
         app.mainClock.autoAdvance=false
         try {
             app.onNodeWithTag("record-day-25").performClick()
-            app.mainClock.advanceTimeBy(100)
-            val partial=app.onNodeWithTag("record-detail").getUnclippedBoundsInRoot().height.value
-            app.mainClock.advanceTimeBy(240)
-            val full=app.onNodeWithTag("record-detail").getUnclippedBoundsInRoot().height.value
-            assertTrue("The date bubble must grow continuously: partial=$partial, full=$full",partial>0f&&partial<full)
+            app.mainClock.advanceTimeBy(180)
+            val partial=app.onNodeWithTag("record-detail").fetchSemanticsNode().boundsInRoot.height
+            app.mainClock.advanceTimeBy(400)
+            val full=app.onNodeWithTag("record-detail").fetchSemanticsNode().boundsInRoot.height
+            assertTrue("The detail container must grow continuously: partial=$partial, full=$full",partial>0f&&partial<full)
+            app.onNodeWithTag("record-day-26").performClick()
+            app.mainClock.advanceTimeBy(160)
+            assertEquals(full,app.onNodeWithTag("record-detail").fetchSemanticsNode().boundsInRoot.height,2f)
+            assertTrue(app.onNodeWithTag("record-content-25").getUnclippedBoundsInRoot().left.value<0f)
+            assertTrue(app.onNodeWithTag("record-content-26").getUnclippedBoundsInRoot().left.value>0f)
+            app.mainClock.advanceTimeBy(500)
+            app.onNodeWithTag("record-day-26").assertIsSelected()
             app.onNodeWithContentDescription("关闭日期详情").performClick()
+            app.mainClock.advanceTimeBy(180)
+            app.onNodeWithTag("record-detail").assertExists()
             app.mainClock.advanceTimeBy(300)
             app.onNodeWithTag("record-detail").assertDoesNotExist()
             app.onNodeWithTag("record-day-25").assertIsDisplayed()
+            app.onNodeWithTag("records-month").performClick()
+            app.mainClock.advanceTimeBy(180)
+            val entering=app.onNodeWithTag("drawer-panel").getUnclippedBoundsInRoot().top.value
+            app.mainClock.advanceTimeBy(300)
+            val resting=app.onNodeWithTag("drawer-panel").getUnclippedBoundsInRoot().top.value
+            assertTrue(entering>resting)
+            app.onNodeWithTag("month-cancel").performClick()
+            app.mainClock.advanceTimeBy(180)
+            assertTrue(app.onNodeWithTag("drawer-panel").getUnclippedBoundsInRoot().top.value>resting)
+            app.mainClock.advanceTimeBy(300)
+            app.onNodeWithTag("drawer-panel").assertDoesNotExist()
         } finally {app.mainClock.autoAdvance=true}
     }
 

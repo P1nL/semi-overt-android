@@ -106,10 +106,12 @@ class IdentityTransitionTest {
             }
         }
         app.waitForIdle()
-        val source=app.onNodeWithContentDescription("打开搜索").fetchSemanticsNode().boundsInRoot.center
+        val source=app.onNodeWithContentDescription("打开个人页").fetchSemanticsNode().boundsInRoot.center
         app.mainClock.autoAdvance=false
         try {
-            app.onNodeWithContentDescription("打开搜索").performClick()
+            val searchAction=app.onNodeWithTag("main-circle").fetchSemanticsNode()
+                .config[androidx.compose.ui.semantics.SemanticsActions.CustomActions].first {it.label=="前往搜索"}
+            app.runOnUiThread {searchAction.action()}
             app.mainClock.advanceTimeBy(400)
             val departing=app.onRoot().captureToImage()
             app.mainClock.advanceTimeBy(250)

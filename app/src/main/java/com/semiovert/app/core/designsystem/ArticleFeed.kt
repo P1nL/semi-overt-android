@@ -48,7 +48,7 @@ fun ArticleFeed(
                     exitRank=(index-if(index>articles.indexOfFirst {it.id==expansion?.source?.article?.id})1 else 0).coerceAtLeast(0))
                 else ArticleCard(article,onArticle)
             }
-            item("offline-note") { Text("本地原创示例 · 插画与内容仅用于交互预览",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.padding(vertical=12.dp)) }
+            item("offline-note") { Text("本地原创示例 · 插画与内容仅用于交互预览",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.padding(vertical=12.dp).readingChromeFade()) }
         }
     }
 }

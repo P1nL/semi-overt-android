@@ -5,6 +5,33 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class WaveDeckMathTest {
+    @Test fun categoryAndSearchCounterKeepTheSameScreenHeight() {
+        for(statusTop in listOf(24f,32f)) {
+            val category=DeckCounterLayout.localTop(statusTop,false)
+            val searchViewport=statusTop+DeckCounterLayout.SEARCH_HEADER_TOP+DeckCounterLayout.SEARCH_SCOPE_HEIGHT
+            assertEquals(category,searchViewport+DeckCounterLayout.localTop(statusTop,true),.001f)
+        }
+    }
+    @Test fun windowOutsideArticleReplacesDepartingFrontInsteadOfRecyclingIt() {
+        val count=11;val limit=WaveDeckMath.SEARCH_VISIBLE
+        assertEquals(6,limit)
+        val g=WaveDeckMath.embeddedGeometry(411f,750f,count,900f,visibleLimit=limit)
+        val leaving=WaveDeckMath.frames(count,.5f,g,limit)
+        assertTrue(leaving.any {it.article==0&&it.outgoing})
+        val arriving=WaveDeckMath.frames(count,.95f,g,limit)
+        assertFalse(arriving.any {it.article==0})
+        assertTrue(arriving.any {it.article==6&&it.alpha>0f})
+        assertEquals((1..6).toSet(),WaveDeckMath.frames(count,1f,g,limit).map {it.article}.toSet())
+        assertEquals((0..5).toSet(),WaveDeckMath.frames(count,0f,g,limit).map {it.article}.toSet())
+    }
+    @Test fun smallDeckStillRecyclesTheSameArticleAtItsRear() {
+        val g=WaveDeckMath.embeddedGeometry(411f,750f,4,900f,visibleLimit=6)
+        val recycling=WaveDeckMath.frames(4,.95f,g,6).single {it.article==0}
+        assertTrue(recycling.returning)
+        val next=WaveDeckMath.frames(4,1f,g,6)
+        assertEquals(1,next.maxBy {it.layer}.article)
+        assertEquals(0,next.minBy {it.layer}.article)
+    }
     @Test fun categoryAndSearchShowSeventyPercentOfTheSameFullHeightCardAtTheScreenBottom() {
         val reference=WaveDeckMath.geometry(411f,900f,3)
         for((viewport,limit) in listOf(900f to WaveDeckMath.CATEGORY_VISIBLE,750f to WaveDeckMath.SEARCH_VISIBLE)) {
@@ -47,7 +74,7 @@ class WaveDeckMathTest {
         }
     }
     @Test fun sceneWindowsLimitRenderingWithoutDiscardingArticles() {
-        assertEquals(4,WaveDeckMath.SEARCH_VISIBLE)
+        assertEquals(6,WaveDeckMath.SEARCH_VISIBLE)
         assertEquals(7,WaveDeckMath.CATEGORY_VISIBLE)
         assertEquals(5,WaveDeckMath.PROFILE_VISIBLE)
         for(limit in listOf(WaveDeckMath.SEARCH_VISIBLE,WaveDeckMath.CATEGORY_VISIBLE,WaveDeckMath.PROFILE_VISIBLE)) {

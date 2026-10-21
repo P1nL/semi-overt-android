@@ -18,6 +18,8 @@ data class ArcCardPose(val article: Int,val distance: Float,val centerX: Float,v
 }
 
 object ArcDeckMath {
+    const val SIDE_MARGIN=16f
+    private const val PULL_GAP=16f
     const val ANGLE_STEP=.30f
     const val VISIBLE_DISTANCE=4.65f
     const val EDGE_START_DISTANCE=4f
@@ -32,16 +34,34 @@ object ArcDeckMath {
         else -> 0f
     }
 
-    fun focusLift(g: ArcDeckGeometry): Float {
-        // Preserve the approved main-card rise independently of neighbour pitch tuning.
-        val angle=4f*PI.toFloat()/180f
-        val nextHalfHeight=g.cardHeight*(cos(angle)+sin(angle))/2f
-        val overlap=g.cardHeight/2f+nextHalfHeight-g.radiusY*sin(ANGLE_STEP)+8f
-        return min(overlap,(g.focusY-g.cardHeight/2f-32f).coerceAtLeast(0f))
+    // Clear the following card by motion, not by changing the article's drawing order.
+    fun pullLift(distance: Float,g: ArcDeckGeometry): Float {
+        val here=atDistance(0,distance,0f,g).centerY
+        val next=atDistance(0,distance+1f,0f,g).centerY
+        // Include the projected top edge of the tilted foreground neighbour.
+        return max(min(64f,g.cardHeight*.18f),g.cardHeight-(next-here)+PULL_GAP)
     }
+    fun pulledLeft(g: ArcDeckGeometry)=g.width-SIDE_MARGIN-g.cardWidth
+    fun canPull(g: ArcDeckGeometry,safeTop: Float,safeBottom: Float)=
+        g.height>=440f&&safeBottom-safeTop>=g.cardHeight
 
-    fun focusShiftX(g: ArcDeckGeometry): Float =
-        min(g.cardWidth*.18f,(g.width-g.focusX-g.cardWidth/2f-16f).coerceAtLeast(0f))
+    /** Project onto the nearest legal arc position, never onto the centre slot. */
+    fun pullPosition(article: Int,position: Float,count: Int,g: ArcDeckGeometry,safeTop: Float,safeBottom: Float): Float {
+        val d=distance(article,position,count)
+        val minY=safeTop+g.cardHeight/2f
+        val maxY=safeBottom-g.cardHeight/2f
+        fun pulledY(distance: Float)=atDistance(article,distance,0f,g).centerY-pullLift(distance,g)
+        val y=pulledY(d)
+        if(y in minY..maxY)return position
+        val targetY=y.coerceIn(minY,maxY)
+        var low=-EDGE_CLEAR_DISTANCE-1f
+        var high=EDGE_CLEAR_DISTANCE+1f
+        repeat(24) {
+            val mid=(low+high)/2f
+            if(pulledY(mid)<targetY)low=mid else high=mid
+        }
+        return position+d-(low+high)/2f
+    }
 
     fun geometry(width: Float,height: Float): ArcDeckGeometry {
         val cardWidth=min(width*.70f,min(360f,height*.53f))

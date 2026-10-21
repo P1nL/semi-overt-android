@@ -2,10 +2,60 @@ package com.semiovert.app
 
 import com.semiovert.app.core.designsystem.*
 import com.semiovert.app.core.designsystem.arc.*
+import androidx.compose.animation.core.*
 import org.junit.Assert.*
 import org.junit.Test
 
 class DeckSceneMotionTest {
+    @Test fun readingOpenAndReturnLeaveTimeForVisibleStages() {
+        val old=TargetBasedAnimation(SceneMotion.readingSpring(),Float.VectorConverter,0f,1f)
+        val opening=TargetBasedAnimation(SceneMotion.readingOpenSpring(),Float.VectorConverter,0f,1f)
+        assertTrue(opening.durationNanos>old.durationNanos*1.8)
+        val speed=SceneMotion.readingReleaseVelocity(640f)
+        val released=TargetBasedAnimation(SceneMotion.readingOpenSpring(),Float.VectorConverter,.25f,1f,AnimationVector1D(speed))
+        assertEquals(speed,released.getVelocityVectorFromNanos(0L).value,.001f)
+        val closing=TargetBasedAnimation(SceneMotion.readingCloseSpec(),Float.VectorConverter,1f,0f)
+        assertEquals(1_600_000_000L,closing.durationNanos)
+        assertTrue(SceneMotion.readingBody(closing.getValueFromNanos(250_000_000L))>0f)
+        assertEquals(.5f,closing.getValueFromNanos(800_000_000L),.001f)
+        assertEquals(0f,closing.getValueFromNanos(closing.durationNanos),0f)
+    }
+    @Test fun readingTextSettlesBeforeAvatarAndBodyBegin() {
+        val held=SceneMotion.readingDrag(10f)
+        assertTrue(held<SceneMotion.READING_CONTAINER_START)
+        assertEquals(0f,SceneMotion.readingText(held),0f)
+        assertEquals(0f,SceneMotion.readingAvatar(held),0f)
+        assertEquals(0f,SceneMotion.readingBody(held),0f)
+        assertTrue(SceneMotion.readingChrome(SceneMotion.readingDrag(.2f))>0f)
+        assertEquals(1f,SceneMotion.readingChrome(SceneMotion.readingDrag(1f)),0f)
+        assertEquals(1f,SceneMotion.readingText(.88f),.001f)
+        assertTrue(SceneMotion.readingAvatar(.92f)>0f)
+        assertTrue(SceneMotion.readingBody(.96f)>0f)
+        assertEquals(1f,SceneMotion.readingBody(1f),0f)
+        assertEquals(0f,SceneMotion.readingText(0f),0f)
+    }
+    @Test fun readingSpringCarriesReleaseVelocityAndFollowersReboundInBothDirections() {
+        val speed=SceneMotion.readingReleaseVelocity(640f)
+        val release=TargetBasedAnimation(SceneMotion.readingSpring(),Float.VectorConverter,.25f,1f,AnimationVector1D(speed))
+        assertEquals(speed,release.getVelocityVectorFromNanos(0L).value,.001f)
+        assertTrue(SceneMotion.readingReleaseVelocity(-640f)<0f)
+        val down=TargetBasedAnimation(SceneMotion.readingFollowerSpring(0),Float.VectorConverter,0f,100f)
+        val up=TargetBasedAnimation(SceneMotion.readingFollowerSpring(0),Float.VectorConverter,100f,0f,AnimationVector1D(300f))
+        val samples=(0..180).map {it*1_000_000_000L/120}
+        assertTrue(samples.maxOf {down.getValueFromNanos(it)}>100f)
+        assertTrue(up.getValueFromNanos(8_000_000L)>100f)
+        assertTrue(samples.minOf {up.getValueFromNanos(it)}<0f)
+        assertEquals(0f,up.getValueFromNanos(samples.last()),.01f)
+    }
+    @Test fun readingStackExitsInOrderAndUsesTheSameReversibleProgress() {
+        assertTrue(SceneMotion.readingOffset(.04f,0,300f,900f)>0f)
+        assertEquals(0f,SceneMotion.readingOffset(.04f,1,300f,900f),0f)
+        for(rank in 0..5) {
+            assertEquals(0f,SceneMotion.readingOffset(0f,rank,300f,900f),0f)
+            assertEquals(624f,SceneMotion.readingOffset(1f,rank,300f,900f),.001f)
+        }
+        assertTrue(SceneMotion.CATEGORY_SWAP_MS<SceneMotion.CATEGORY_EXIT_MS)
+    }
     @Test fun homeExitIsExactlyNineHundredMilliseconds(){assertEquals(900,SceneMotion.HOME_EXIT_MS)}
     @Test fun primaryElementsGetOneSecondWithOverlappingSceneWindows() {
         assertEquals(1000,SceneMotion.PRIMARY_ELEMENT_MS)

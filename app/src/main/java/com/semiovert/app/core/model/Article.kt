@@ -1,7 +1,7 @@
 package com.semiovert.app.core.model
 
 enum class ReadingDuration(val label: String) {
-    QUICK("<3 min"), MEDIUM("3–8 min"), LONG(">8 min");
+    QUICK("<3 min"), MEDIUM("3~8 min"), LONG(">8 min");
     fun accepts(minutes: Int): Boolean = when (this) {
         QUICK -> minutes < 3
         MEDIUM -> minutes in 3..8

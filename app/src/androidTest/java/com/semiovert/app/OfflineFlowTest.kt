@@ -20,7 +20,7 @@ class OfflineFlowTest {
     @get:Rule(order=1) val app=createAndroidComposeRule<MainActivity>()
 
     private fun navigate(label: String) {
-        app.onNodeWithContentDescription("打开页面导航").performClick()
+        app.onNodeWithTag("main-circle").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnLongClick){it()}
         app.onNodeWithContentDescription("切换到"+label).performClick()
         app.waitForIdle()
     }
@@ -29,21 +29,22 @@ class OfflineFlowTest {
         app.waitForIdle()
     }
 
-    @Test fun readerBackgroundTravelsWithTheIncomingPage() {
+    @Test fun homeReaderUsesSharedExpansionInsteadOfASlidingPage() {
         app.onNodeWithTag("feed-home").assertHomeResting(0)
-        val background=app.onRoot().captureToImage().toPixelMap()[2,2].toArgb()
-        val density=app.activity.resources.displayMetrics.density
+        app.onNodeWithTag("article-forest").performTouchInput {click(Offset(width*.5f,height*.08f))}
+        app.waitForIdle()
         app.mainClock.autoAdvance=false
         try {
             app.onNodeWithTag("article-forest").performClick()
             app.mainClock.advanceTimeBy(160)
             app.waitForIdle()
-            val bounds=app.onNodeWithTag("reader-screen").getUnclippedBoundsInRoot()
-            assertTrue("Capture must be during the slide, not after it",bounds.left.value>0f)
-            val image=app.onRoot().captureToImage().toPixelMap()
-            val x=((bounds.left.value+6f)*density).roundToInt()
-            val y=(260f*density).roundToInt()
-            assertEquals("The incoming page must carry its own opaque background",background,image[x,y].toArgb())
+            app.onNodeWithTag("reading-expansion").assertIsDisplayed()
+            app.onNodeWithTag("reader-screen").assertDoesNotExist()
+            app.mainClock.advanceTimeBy(1000)
+            app.waitForIdle()
+            app.onNodeWithTag("reader-screen").assertIsDisplayed()
+            app.onNodeWithTag("reader-bottom-title").assertDoesNotExist()
+            app.onNodeWithContentDescription("打开目录").assertIsDisplayed()
         } finally {app.mainClock.autoAdvance=true}
     }
 
@@ -90,10 +91,10 @@ class OfflineFlowTest {
         navigate("分类")
         app.onNodeWithText("<3 min").assertIsDisplayed()
         app.onNodeWithTag("main-circle").performClick()
-        app.onNodeWithText("3–8 min").assertIsDisplayed()
+        app.onNodeWithText("3~8 min").assertIsDisplayed()
         app.onNodeWithTag("article-street").performClick()
         back()
-        app.onNodeWithText("3–8 min").assertIsDisplayed()
+        app.onNodeWithText("3~8 min").assertIsDisplayed()
         app.onNodeWithTag("article-street").assertIsDisplayed()
         app.onNodeWithTag("main-circle").performClick()
         app.onNodeWithText(">8 min").assertIsDisplayed()

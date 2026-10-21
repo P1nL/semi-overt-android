@@ -28,6 +28,7 @@ import com.semiovert.app.core.data.SampleLibrary
 import com.semiovert.app.core.designsystem.*
 import com.semiovert.app.core.designsystem.wave.WaveArticleDeck
 import com.semiovert.app.core.designsystem.wave.WaveDeckMath
+import com.semiovert.app.core.designsystem.wave.DeckCounterLayout
 import com.semiovert.app.core.model.SearchScope
 import com.semiovert.app.navigation.*
 import kotlinx.coroutines.launch
@@ -46,6 +47,7 @@ fun SearchScreen(onNavigate: (Destination)->Unit,onArticle: (String)->Unit,onAut
     val searchScope=SearchScope.valueOf(scopeName)
     val motion=LocalMotionEnabled.current
     val headerProgress=if(motion)SceneMotion.searchHeader(1f-LocalFlowRoll.current) else 1f
+    val identityProgress=if(LocalIdentityHandoffActive.current)LocalIdentityArrival.current else headerProgress
     val density=LocalDensity.current.density
     val articleList=rememberLazyListState()
     val authorList=rememberLazyListState()
@@ -56,32 +58,40 @@ fun SearchScreen(onNavigate: (Destination)->Unit,onArticle: (String)->Unit,onAut
     val authors=remember(query) {SampleLibrary.searchAuthors(query)}
     val updateQuery: (String)->Unit = { model.query(it);coroutine.launch {articleList.scrollToItem(0);authorList.scrollToItem(0)} }
     BrowseScene(Destination.SEARCH,"搜索",onNavigate,onPrimary=model::toggleScope,header={openNavigation ->
-        Row(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=8.dp),verticalAlignment=Alignment.CenterVertically) {
+        BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=8.dp)) {
             val sharedIdentity=LocalIdentityHandoffActive.current
-            IconButton(onClick=openNavigation,modifier=Modifier.size(48.dp).graphicsLayer {translationX=if(sharedIdentity)0f else 56f*density*(1f-headerProgress)}.semantics {contentDescription="打开页面导航"}) {
-                IdentityAvatar()
+            val travel=(maxWidth-56.dp-8.dp).value*density
+            Row(Modifier.fillMaxWidth().height(56.dp),verticalAlignment=Alignment.CenterVertically) {
+            IconButton(onClick=openNavigation,modifier=Modifier.size(56.dp).graphicsLayer {
+                translationX=if(sharedIdentity)0f else travel*(1f-identityProgress)
+            }.semantics {contentDescription="打开页面导航"}) {
+                IdentityAvatar(size=56)
             }
-            OutlinedTextField(value=query,onValueChange=updateQuery,modifier=Modifier.weight(1f).padding(start=8.dp).graphicsLayer {alpha=headerProgress;translationX=32f*density*(1f-headerProgress)}.testTag("search-input"),
-                singleLine=true,label={Text("搜索本地示例")},textStyle=MaterialTheme.typography.bodyMedium,
+            Box(Modifier.weight(1f).padding(start=8.dp).identityCompanionOverlay().clipToBounds()) {
+            OutlinedTextField(value=query,onValueChange=updateQuery,modifier=Modifier.fillMaxWidth().height(56.dp).graphicsLayer {
+                translationX=travel*(1f-identityProgress)
+            }.testTag("search-input"),
+                singleLine=true,placeholder={Text("搜索本地示例")},textStyle=MaterialTheme.typography.bodyMedium,
                 shape=CircleShape,keyboardOptions=KeyboardOptions(imeAction=ImeAction.Search),keyboardActions=KeyboardActions(onSearch={keyboard?.hide()}),
                 trailingIcon={if(query.isNotEmpty()) IconButton(onClick={updateQuery("")}) {SoIcon(SoSymbol.CLOSE,"清空搜索")}})
+            }
+            }
         }
     }) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
         val referenceHeight=maxHeight
         val useWave=motion&&LocalDensity.current.fontScale<=1.2f&&referenceHeight>=440.dp&&referenceHeight>maxWidth
         val resultMotion=Modifier.graphicsLayer {alpha=headerProgress;translationY=32f*density*(1f-headerProgress)}
-        Column(Modifier.fillMaxSize().padding(top=WindowInsets.statusBars.asPaddingValues().calculateTopPadding()+76.dp)) {
-            Row(Modifier.fillMaxWidth().padding(horizontal=20.dp).then(resultMotion),verticalAlignment=Alignment.CenterVertically) {
+        Column(Modifier.fillMaxSize().padding(top=WindowInsets.statusBars.asPaddingValues().calculateTopPadding()+DeckCounterLayout.SEARCH_HEADER_TOP.dp)) {
+            Row(Modifier.fillMaxWidth().height(DeckCounterLayout.SEARCH_SCOPE_HEIGHT.dp).padding(horizontal=20.dp).then(resultMotion).readingChromeFade(),verticalAlignment=Alignment.CenterVertically) {
                 SearchScope.entries.forEach { item ->
                     TextButton(onClick={if(searchScope!=item) model.toggleScope()},modifier=Modifier.semantics {selected=searchScope==item}) {
                         Text(item.label,style=MaterialTheme.typography.labelLarge,color=if(searchScope==item) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant)
+                        if(item==SearchScope.AUTHORS)Text(" ${authors.size}",style=MaterialTheme.typography.labelMedium,
+                            color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.testTag("search-author-count"))
                     }
                 }
                 Spacer(Modifier.weight(1f))
-                val position=if(articles.isEmpty())0 else (if(useWave)selectedArticle else articleList.firstVisibleItemIndex).coerceAtMost(articles.lastIndex)+1
-                Text(if(searchScope==SearchScope.ARTICLES)"$position / ${articles.size}" else "${authors.size} 条",
-                    style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.testTag("search-position"))
             }
             AnimatedContent(targetState=searchScope,modifier=Modifier.weight(1f),label="search-scope",transitionSpec={
                 val direction=if(targetState==SearchScope.AUTHORS)1 else -1
@@ -90,7 +100,7 @@ fun SearchScreen(onNavigate: (Destination)->Unit,onArticle: (String)->Unit,onAut
             if(visibleScope==SearchScope.ARTICLES) BoxWithConstraints(Modifier.fillMaxSize().clipToBounds()) {
                 if(articles.isNotEmpty()&&useWave)
                     WaveArticleDeck(articles,selectedArticle,{selectedArticle=it},onArticle,listTag="feed-search",deckTag="search-wave",referenceHeight=referenceHeight,
-                        visibleLimit=WaveDeckMath.SEARCH_VISIBLE,showCounter=false,
+                        visibleLimit=WaveDeckMath.SEARCH_VISIBLE,
                         frontTop=WaveDeckMath.restingFrontTop(maxWidth.value,maxHeight.value,referenceHeight.value).dp)
                 else ArticleFeed(articles,articleList,"feed-search",onArticle,emptyMessage="没有找到相关文章",
                     emptyHint="换个关键词，或切换到作者搜索。",modifier=Modifier.fillMaxSize().then(resultMotion),categoryCards=true)

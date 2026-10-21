@@ -27,7 +27,7 @@ class HomeArcDeckTest {
         }
         app.waitForIdle()
     }
-    @Test fun focusRisesWhileNeighboursKeepTheirFullHeightAndRingPosition() {
+    @Test fun restingCardsStayOnTheRingWithoutAutomaticLiftOrTilt() {
         app.onNodeWithTag("home-arc").assertIsDisplayed()
         app.waitUntil(10_000) {
             !app.onNodeWithTag("article-forest").fetchSemanticsNode().config.contains(SemanticsProperties.Disabled)
@@ -40,21 +40,21 @@ class HomeArcDeckTest {
         assertEquals("Cover fills the complete card",front,cover)
         assertTrue(front.left>=root.left&&front.right<=root.right)
         assertTrue(front.top>=root.top&&front.bottom<=root.bottom)
-        val above=app.onNodeWithTag("arc-card-letter",useUnmergedTree=true).fetchSemanticsNode().boundsInRoot
-        val below=app.onNodeWithTag("arc-card-street",useUnmergedTree=true).fetchSemanticsNode().boundsInRoot
-        assertTrue("Upper stack must stay left: ${above} / ${front}",above.center.x<front.center.x)
-        assertTrue("Lower stack also returns left: ${below} / ${front}",below.center.x<front.center.x)
-        assertTrue("Previous neighbour must not be flattened",above.height>=front.height*.95f)
-        assertTrue("Following neighbour must not be flattened",below.height>=front.height*.95f)
-        assertTrue("Following neighbour makes room: $below / $front",below.top>=front.bottom-1f)
         val density=app.activity.resources.displayMetrics.density
         val g=ArcDeckMath.geometry(root.width/density,root.height/density)
-        assertEquals(root.left+(g.focusX+ArcDeckMath.focusShiftX(g))*density,front.center.x,2f)
-        assertEquals(root.top+(g.focusY-ArcDeckMath.focusLift(g))*density,front.center.y,2f)
         val poses=ArcDeckMath.frames(SampleLibrary.articles.size,0f,g)
-        assertEquals(root.top+poses.single {it.article==1}.centerY*density,below.center.y,2f)
+        for(index in listOf(0,1,10)) {
+            val id=SampleLibrary.articles[index].id
+            val bounds=app.onNodeWithTag("arc-card-"+id,useUnmergedTree=true).fetchSemanticsNode().boundsInRoot
+            val pose=poses.single {it.article==index}
+            assertEquals(root.left+pose.centerX*density,bounds.center.x,2f)
+            assertEquals(root.top+pose.centerY*density,bounds.center.y,2f)
+            assertEquals(g.cardHeight*density,bounds.height,2f)
+            app.onNodeWithTag("article-"+id).assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription,"未展开"))
+        }
+        app.onNodeWithTag("arc-tab-forest",useUnmergedTree=true).assertDoesNotExist()
     }
-    @Test fun switchingFocusKeepsTheSameRiseAndCardSize() {
+    @Test fun scrollingDoesNotLiftAndClickingPullsInPlaceBeforeReading() {
         app.onNodeWithTag("home-arc").assertIsDisplayed()
         val root=app.onNodeWithTag("feed-home").fetchSemanticsNode().boundsInRoot
         val density=app.activity.resources.displayMetrics.density
@@ -63,29 +63,63 @@ class HomeArcDeckTest {
             app.onNodeWithTag("feed-home").performScrollToIndex(index)
             app.waitForIdle()
             val selected=app.onNodeWithTag("article-"+id).fetchSemanticsNode().boundsInRoot
-            assertEquals(root.left+(g.focusX+ArcDeckMath.focusShiftX(g))*density,selected.center.x,2f)
-            assertEquals(root.top+(g.focusY-ArcDeckMath.focusLift(g))*density,selected.center.y,2f)
+            assertEquals(root.left+g.focusX*density,selected.center.x,2f)
+            assertEquals(root.top+g.focusY*density,selected.center.y,2f)
             assertEquals(g.cardWidth*density,selected.width,2f)
             assertEquals(g.cardHeight*density,selected.height,2f)
         }
         app.onNodeWithTag("feed-home").assertHomeResting(0)
-        // The main card rises above the following card instead of flattening its neighbours.
+        val belowBefore=app.onNodeWithTag("arc-card-street",useUnmergedTree=true).fetchSemanticsNode().boundsInRoot
+        // Tap the exposed top strip, not a semantics-only click through a foreground card.
+        app.onNodeWithTag("article-forest").performTouchInput {click(Offset(width*.5f,height*.08f))}
+        app.waitForIdle()
+        app.onNodeWithTag("reader-screen").assertDoesNotExist()
+        app.onNodeWithTag("feed-home").assertHomeResting(0)
+        val pulled=app.onNodeWithTag("article-forest").fetchSemanticsNode().boundsInRoot
+        assertEquals(root.left+ArcDeckMath.pulledLeft(g)*density,pulled.left,2f)
+        assertEquals(root.top+(g.focusY-ArcDeckMath.pullLift(0f,g))*density,pulled.center.y,2f)
+        val belowAfter=app.onNodeWithTag("arc-card-street",useUnmergedTree=true).fetchSemanticsNode().boundsInRoot
+        assertEquals("Tilting does not move the neighbour horizontally",belowBefore.center.x,belowAfter.center.x,2f)
+        assertTrue("Keep the front card full-sized, with only the requested tilt",belowAfter.height>belowBefore.height*.9f)
+        assertTrue("The front card retains its place and the pulled card clears it",pulled.bottom<belowAfter.top)
         app.onNodeWithTag("article-forest").performTouchInput {click(Offset(width*.5f,height*.9f))}
         app.onNodeWithTag("reader-screen").assertIsDisplayed()
+    }
+    @Test fun clickingAnUpperCardMakesMinimalRoomAndDraggingCollapsesIt() {
+        app.onNodeWithTag("home-arc").assertIsDisplayed()
+        val root=app.onNodeWithTag("feed-home").fetchSemanticsNode().boundsInRoot
+        val density=app.activity.resources.displayMetrics.density
+        val g=ArcDeckMath.geometry(root.width/density,root.height/density)
+        val id=SampleLibrary.articles[8].id
+        val before=app.onNodeWithTag("article-"+id).fetchSemanticsNode().boundsInRoot
+        app.onNodeWithTag("article-"+id).performTouchInput {click(Offset(width*.5f,height*.08f))}
+        app.waitForIdle()
+        val pulled=app.onNodeWithTag("article-"+id).fetchSemanticsNode().boundsInRoot
+        val header=app.onNodeWithContentDescription("打开个人页").fetchSemanticsNode().boundsInRoot
+        assertTrue(pulled.top>=header.bottom)
+        assertEquals(g.cardHeight*density,pulled.height,2f)
+        assertEquals(root.right-16f*density,pulled.right,2f)
+        assertTrue("Only enough repositioning to clear the header",pulled.top<root.top+g.focusY*density-g.cardHeight*density/2f)
+        assertTrue(pulled.center.y>before.center.y-g.cardHeight*density)
+        app.onNodeWithTag("reader-screen").assertDoesNotExist()
+        swipePage(up=true)
+        app.onAllNodes(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription,"已展开，再次点击阅读")).assertCountEquals(0)
     }
     @Test fun transparentHeaderRemainsTappableAboveOverflowingCards() {
         app.onNodeWithTag("home-arc").assertIsDisplayed()
         app.onNodeWithContentDescription("打开页面导航").performTouchInput {click()}
         app.onNodeWithText("去哪里看看").assertIsDisplayed()
         androidx.test.espresso.Espresso.pressBack();app.waitForIdle()
-        app.onNodeWithContentDescription("打开搜索").performTouchInput {click()}
+        app.onNodeWithContentDescription("打开个人页").performTouchInput {click()}
         app.waitForIdle()
-        app.onNodeWithTag("search-input").assertIsDisplayed()
+        app.onNodeWithTag("profile-scene").assertIsDisplayed()
     }
     @Test fun upAndDownSelectCardsAndReadingAndRecreationKeepTheSelection() {
         app.onNodeWithTag("article-forest").assertIsDisplayed()
         swipePage(up=true)
         app.onNodeWithTag("feed-home").assertHomeResting(1)
+        app.onNodeWithTag("article-street").performTouchInput {click(Offset(width*.5f,height*.08f))}
+        app.waitForIdle()
         app.onNodeWithTag("article-street").performClick()
         app.onNodeWithTag("reader-screen").assertIsDisplayed()
         androidx.test.espresso.Espresso.pressBack();app.waitForIdle()
@@ -121,6 +155,8 @@ class HomeArcDeckTest {
             app.onNodeWithTag("article-"+article.id).assertIsDisplayed()
             app.onNodeWithTag("arc-cover-"+article.id,useUnmergedTree=true).assertIsDisplayed()
         }
+        app.onNodeWithTag("article-letter").performTouchInput {click(Offset(width*.5f,height*.08f))}
+        app.waitForIdle()
         app.onNodeWithTag("article-letter").performClick()
         app.onNodeWithTag("reader-screen").assertIsDisplayed()
     }

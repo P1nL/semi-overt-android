@@ -21,7 +21,7 @@ object WaveDeckMath {
     const val RETURN_FRACTION=.14f
     const val EXIT_FRACTION=1f-RETURN_FRACTION
     const val DOWNWARD_GAIN=1.25f
-    const val SEARCH_VISIBLE=4
+    const val SEARCH_VISIBLE=6
     const val CATEGORY_VISIBLE=7
     const val PROFILE_VISIBLE=5
     const val RESTING_VISIBLE_FRACTION=.7f
@@ -38,7 +38,7 @@ object WaveDeckMath {
     private fun smooth(value: Float): Float {val t=value.coerceIn(0f,1f);return t*t*(3f-2f*t)}
     private fun verticalReference(width: Float,height: Float)=min(width*.82f,min(380f,height*.65f))
     // Preserve the established top-edge spacing without narrowing cards farther back.
-    private fun stackTop(depth: Float,g: WaveDeckGeometry)=
+    internal fun stackTop(depth: Float,g: WaveDeckGeometry)=
         g.uniformTopGap?.let {g.frontTop-depth*it}
             ?: (g.frontTop-depth*g.stackStep+verticalReference(g.width,g.height)*min(depth*.05f,.28f)/2f)
 
@@ -84,6 +84,8 @@ object WaveDeckMath {
 
     fun frames(count: Int,position: Float,g: WaveDeckGeometry,visibleLimit: Int=count): List<WaveCardPose> {
         if(count==0)return emptyList()
+        val visible=visibleLimit.coerceIn(1,count)
+        if(count>visible)return windowedFrames(count,position,g,visible)
         val poses=(0 until count).map {article ->
         val distance=wrap(article-position,count)
         if(distance<=count-1f) {
@@ -117,17 +119,36 @@ object WaveDeckMath {
             }
         }
         }
-        val visible=visibleLimit.coerceIn(1,count)
-        if(visible==count)return poses
-        // The outgoing foreground occupies a slot until it leaves. Its replacement
-        // enters at the rear only during the hidden-transfer phase, without a pop.
-        return poses.filter { !it.returning&&(it.outgoing||wrap(it.article-position,count)<visible) }
-            .sortedByDescending {it.layer}.take(visible).map {pose ->
-                val depth=wrap(pose.article-position,count)
-                if(!pose.outgoing&&depth>visible-1f)
-                    pose.copy(alpha=smooth((visible-depth-EXIT_FRACTION)/RETURN_FRACTION))
-                else pose
+        return poses
+    }
+
+    /** A sliding data window: the departing article does not recycle into the visible tail. */
+    private fun windowedFrames(count: Int,position: Float,g: WaveDeckGeometry,visible: Int): List<WaveCardPose> {
+        val page=floor(position).toInt()
+        val fraction=position-floor(position)
+        return buildList {
+            if(fraction<EXIT_FRACTION) {
+                add(WaveCardPose(index(page,count),g.width/2f,
+                    g.frontY+(g.outsideY-g.frontY)*fraction/EXIT_FRACTION,1f,visible+1f,g.frontHeight,
+                    outgoing=fraction>0f))
             }
+            for(slot in 1 until visible) {
+                val depth=slot-fraction
+                val whole=floor(depth).toInt()
+                val part=depth-whole
+                val wave=sin(PI.toFloat()*part)
+                val lag=min(.10f+.035f*whole,.28f)
+                val top=stackTop(depth+lag*wave*wave,g)
+                val influence=if(whole==0).25f else .10f*.4f.pow(whole-1)
+                add(WaveCardPose(index(page+slot,count),g.width/2f,(g.height+top)/2f,1f,visible-depth,g.height-top,
+                    waveOffset=min(g.cardSize*.6f,g.height*.30f)*influence*wave*wave))
+            }
+            if(fraction>=EXIT_FRACTION) {
+                val entrance=smooth((fraction-EXIT_FRACTION)/RETURN_FRACTION)
+                val top=stackTop(visible-1f,g)+g.stackStep*1.3f*(1f-entrance)
+                add(WaveCardPose(index(page+visible,count),g.width/2f,(g.height+top)/2f,1f,1f,g.height-top,alpha=entrance))
+            }
+        }
     }
 }
 

@@ -8,8 +8,8 @@ internal object ArcDeckMotion {
 
     // Low stiffness supplies weight; high-but-not-critical damping adds one restrained recoil.
     fun spec()=spring<Float>(dampingRatio=.82f,stiffness=105f,visibilityThreshold=.0015f)
-    // Match the independent neighbour springs already used by the category deck.
-    fun followSpec()=spring<Float>(dampingRatio=1.14f,stiffness=120f,visibilityThreshold=.05f)
+    // Shared 0..1 pull progress keeps both axes in step, without a final pixel-sized snap.
+    fun followSpec()=spring<Float>(dampingRatio=1.14f,stiffness=120f,visibilityThreshold=.001f)
     // Distant neighbours respond more softly, carrying the tilt out through the ring.
     fun tiltSpec(distance: Float)=spring<Float>(dampingRatio=1f,stiffness=180f/(1f+.3f*abs(distance)),visibilityThreshold=.05f)
 

@@ -30,6 +30,41 @@ class PageCompletionTest {
     }
     private fun settings() {app.onNodeWithContentDescription("设置").performClick()}
 
+    @Test fun loginSlidesRightForCancelAndDownToItsCallerAfterSuccess() {
+        navigate("我的");settings();app.waitForIdle()
+        val entry=app.onNodeWithText("进入登录页").performScrollTo()
+        app.mainClock.autoAdvance=false
+        try {
+            entry.performClick();app.mainClock.advanceTimeBy(100)
+            assertTrue(app.onNodeWithTag("login-screen").getUnclippedBoundsInRoot().left.value>0f)
+        }finally{app.mainClock.autoAdvance=true;app.waitForIdle()}
+        val resting=app.onNodeWithTag("login-screen").getUnclippedBoundsInRoot()
+        app.mainClock.autoAdvance=false
+        try {
+            Espresso.pressBack();app.mainClock.advanceTimeBy(100)
+            val leaving=app.onNodeWithTag("login-screen").getUnclippedBoundsInRoot()
+            assertTrue(leaving.left>resting.left)
+            assertEquals(resting.top.value,leaving.top.value,.1f)
+        }finally{app.mainClock.autoAdvance=true;app.waitForIdle()}
+        app.onNodeWithTag("settings-screen").assertIsDisplayed()
+        app.onNodeWithText("进入登录页").performScrollTo().performClick()
+        app.onNodeWithText("填入示例资料").performScrollTo().performClick()
+        val submit=app.onNodeWithTag("account-submit").performScrollTo()
+        app.mainClock.autoAdvance=false
+        try {
+            submit.performClick();app.mainClock.advanceTimeBy(250)
+            val leaving=app.onNodeWithTag("login-screen").getUnclippedBoundsInRoot()
+            assertEquals(resting.left.value,leaving.left.value,.1f)
+            assertTrue("Successful login must slide down, not disappear",leaving.top.value>resting.top.value+40f)
+            assertEquals(0f,app.onNodeWithTag("settings-screen").getUnclippedBoundsInRoot().left.value,.1f)
+        }finally{app.mainClock.autoAdvance=true;app.waitForIdle()}
+        app.onNodeWithTag("settings-screen").assertIsDisplayed()
+        app.onNodeWithTag("login-screen").assertDoesNotExist()
+        app.onNodeWithText("退出演示身份").assertExists()
+        back()
+        app.onNodeWithTag("profile-identity").assertIsDisplayed()
+    }
+
     @Test fun registrationProfileEditingAndCoverAreConnected() {
         navigate("我的")
         app.onNodeWithText("创建账号",useUnmergedTree=true).performClick()

@@ -7,11 +7,11 @@ import androidx.compose.animation.core.*
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.*
 import com.semiovert.app.core.data.SampleLibrary
 import com.semiovert.app.core.designsystem.*
 import com.semiovert.app.core.designsystem.arc.ArcArticleDeck
+import com.semiovert.app.core.designsystem.arc.ArcDeckMath
 import com.semiovert.app.navigation.*
 
 class HomeViewModel : ViewModel() { val articles = SampleLibrary.articles }
@@ -33,8 +33,12 @@ fun HomeScreen(onNavigate: (Destination)->Unit,onArticle: (String)->Unit,model: 
         CompositionLocalProvider(LocalFlowRoll provides if(inheritedPhase==FlowPhase.EXIT)inherited else maxOf(inherited,entrance.value),
             LocalFlowPhase provides if(inheritedPhase==FlowPhase.EXIT)FlowPhase.EXIT else if(!firstEntrancePlayed)FlowPhase.ENTER else inheritedPhase) {
         BoxWithConstraints {
-            if(motion&&LocalDensity.current.fontScale<=1.2f&&maxHeight>=440.dp&&maxHeight>maxWidth&&model.articles.isNotEmpty()) {
-                ArcArticleDeck(model.articles,articleIndex,{articleIndex=it},onArticle)
+            val density=LocalDensity.current
+            val safeTop=WindowInsets.safeDrawing.getTop(density)/density.density+76f
+            val safeBottom=maxHeight.value-WindowInsets.safeDrawing.getBottom(density)/density.density-86f-140f*LocalNavigationPlacement.current.y
+            val geometry=ArcDeckMath.geometry(maxWidth.value,maxHeight.value)
+            if(motion&&density.fontScale<=1.2f&&maxHeight>maxWidth&&ArcDeckMath.canPull(geometry,safeTop,safeBottom)&&model.articles.isNotEmpty()) {
+                ArcArticleDeck(model.articles,articleIndex,{articleIndex=it},onArticle,safeTop,safeBottom)
             } else {
                 val listState=rememberLazyListState(initialFirstVisibleItemIndex=articleIndex)
                 CompositionLocalProvider(LocalMotionEnabled provides false) {

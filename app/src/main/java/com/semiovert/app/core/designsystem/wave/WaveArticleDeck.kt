@@ -89,6 +89,9 @@ fun WaveArticleDeck(articles: List<Article>,selected: Int,onSelected: (Int)->Uni
         }
         val poses=WaveDeckMath.frames(articles.size,position,g,visibleLimit)
         val ordered=poses.sortedByDescending {it.layer}
+        val readingId=expansion?.source?.article?.id
+        val departing=ordered.filter {articles[it.article].id!=readingId}
+        if(showCounter)DeckCounter(focused+1,articles.size,page=listTag.removePrefix("feed-"))
         Box(Modifier.fillMaxSize().testTag(deckTag)
             .waveDeckOverlay {interactive&&(dragging||settling)}
             .draggable(
@@ -119,28 +122,37 @@ fun WaveArticleDeck(articles: List<Article>,selected: Int,onSelected: (Int)->Uni
                 val follower=if(interactive&&!pose.returning)animateFloatAsState(
                     targetValue=pose.waveOffset,animationSpec=WaveDeckMotion.followSpec(),label="wave-follow-"+article.id,
                 ) else null
+                val top=pose.centerY-pose.height/2f
+                val readingRank=departing.indexOf(pose).coerceAtLeast(0)
+                val readingTarget=if(expansion?.active==true&&article.id!=readingId)
+                    SceneMotion.readingOffset(expansion.progress,readingRank,top,g.height) else 0f
+                // Keep this spring mounted when a lift is cancelled, so its return tail is not cut off.
+                val readingFollow by animateFloatAsState(readingTarget,SceneMotion.readingFollowerSpring(readingRank),
+                    label="reading-follow-"+article.id)
                 Box(Modifier.zIndex(pose.layer).wrapContentSize(Alignment.TopStart,unbounded=true)
-                    .requiredSize(g.cardSize.dp,(pose.height+WaveDeckMath.BOTTOM_OVERFLOW).dp).graphicsLayer {
+                    .requiredSize(g.cardSize.dp,(pose.height+WaveDeckMath.BOTTOM_OVERFLOW).dp)
+                    .readingStackOverlay(pose.layer) {expansion?.source?.stackLayer!=null}
+                    .graphicsLayer {
                     translationX=(pose.centerX-g.cardSize/2f)*density
-                    val top=pose.centerY-pose.height/2f
                     val sceneOffset=SceneMotion.waveOffset(roll,phase,rank,poses.size,top,g.height)
-                    val readingOffset=if(expansion?.active==true&&!active)SceneMotion.readingOffset(expansion.progress,(rank-1).coerceAtLeast(0),top,g.height) else 0f
-                    translationY=(top+(follower?.value?:0f)+sceneOffset+readingOffset+elastic)*density
+                    translationY=(top+(follower?.value?:0f)+sceneOffset+readingFollow+elastic)*density
                     scaleX=pose.scale;scaleY=pose.scale;alpha=pose.alpha
                 }.testTag("wave-card-"+article.id)) {
-                    val semantics=if(active)Modifier.testTag("article-"+article.id).semantics(mergeDescendants=true) {
-                        role=Role.Button;stateDescription="选中"
+                    val semantics=Modifier.testTag("article-"+article.id).semantics(mergeDescendants=true) {
+                        role=Role.Button;stateDescription=if(active)"选中" else "可上提展开"
                         contentDescription=article.title+"，"+article.author.name+"，约"+article.minutes+"分钟"
-                    } else Modifier.clearAndSetSemantics {}
+                    }
                     CoverArticleCard(article,active,Modifier.fillMaxSize().then(semantics),"wave-cover-"+article.id,
                         topAligned=true,squareBottom=true,shortBottomBlur=true,interactable=interactive&&!dragging&&!settling,
-                        onClick={if(active)read(article.id) else settleTo(WaveDeckMath.nearestPage(pose.article,position,articles.size))})
+                        onClick={if(active)read(article.id) else settleTo(WaveDeckMath.nearestPage(pose.article,position,articles.size))},
+                        allowLift=true,stackLayer=pose.layer,onRead={
+                            // Commit the source as the front card while the reader overlay covers the queue.
+                            position=pose.article.toFloat();focusedPage=pose.article;select(pose.article)
+                            read(article.id)
+                        })
                 }
                 }
             }
         }
-            if(showCounter)Text("${focused+1} / ${articles.size}",style=MaterialTheme.typography.bodySmall,
-                color=MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier=Modifier.align(Alignment.TopEnd).zIndex(articles.size+2f).padding(end=24.dp,top=16.dp).clearAndSetSemantics {})
     }
 }

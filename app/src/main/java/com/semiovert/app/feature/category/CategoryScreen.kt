@@ -37,8 +37,8 @@ fun CategoryScreen(onNavigate: (Destination)->Unit,onArticle: (String)->Unit,mod
     var changing by remember {mutableStateOf(false)}
     var phase by remember {mutableStateOf(FlowPhase.IDLE)}
     val cycle: ()->Unit={if(!changing)scope.launch {changing=true;try {
-        phase=FlowPhase.EXIT;roll.animateTo(1f,tween(if(motion)SceneMotion.CATEGORY_EXIT_MS else 0,easing=LinearEasing))
-        model.cycle();phase=FlowPhase.ENTER;roll.animateTo(0f,tween(if(motion)SceneMotion.CATEGORY_ENTER_MS else 0,easing=LinearEasing))
+        phase=FlowPhase.EXIT;roll.animateTo(1f,tween(if(motion)SceneMotion.CATEGORY_SWAP_MS else 0,easing=LinearEasing))
+        model.cycle();phase=FlowPhase.ENTER;roll.animateTo(0f,tween(if(motion)SceneMotion.CATEGORY_SWAP_MS else 0,easing=LinearEasing))
     }finally {phase=FlowPhase.IDLE;changing=false}};Unit}
     BrowseScene(Destination.CATEGORY,duration.label,onNavigate,onPrimary=cycle) {
         CompositionLocalProvider(LocalFlowRoll provides maxOf(inheritedRoll,roll.value),LocalFlowPhase provides if(changing)phase else LocalFlowPhase.current) {

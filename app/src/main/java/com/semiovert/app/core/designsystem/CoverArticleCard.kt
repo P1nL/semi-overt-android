@@ -1,5 +1,6 @@
 package com.semiovert.app.core.designsystem
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -35,46 +36,57 @@ fun articleCoverResource(article: Article,category: Boolean): Int {
 
 /** The category skin owns its handle and reading behavior, wherever it is used. */
 @Composable
-fun CoverArticleCard(article: Article,selected: Boolean,modifier: Modifier,coverTag: String,topAligned: Boolean=false,squareBottom: Boolean=false,shortBottomBlur: Boolean=false,onClick: (()->Unit)?=null,interactable: Boolean=true,exitRank: Int?=null) {
-    val shared=topAligned&&squareBottom
+fun CoverArticleCard(article: Article,selected: Boolean,modifier: Modifier,coverTag: String,topAligned: Boolean=false,squareBottom: Boolean=false,shortBottomBlur: Boolean=false,onClick: (()->Unit)?=null,interactable: Boolean=true,exitRank: Int?=null,
+    readingOrigin: ArticleOrigin?=if(topAligned&&squareBottom)ArticleOrigin.STACK else null,
+    allowLift: Boolean=selected,onRead: (()->Unit)?=onClick,shadowElevation: Dp=2.dp,stackLayer: Float?=null) {
+    val shared=readingOrigin!=null
+    val handle=topAligned&&squareBottom
     val expansion=LocalArticleExpansion.current
     val colors=MaterialTheme.colorScheme
     val cover=article.cover?:if(article.tone==CardTone.MINT)Cover.FOREST else Cover.ARCHITECTURE
     val lightCopy=topAligned&&cover==Cover.FOREST
     val ink=if(lightCopy)if(colors.surface.luminance()<colors.onSurface.luminance())colors.surface else colors.onSurface else Color.White
-    var bounds by remember(article.id){mutableStateOf(Rect.Zero)}
-    var title by remember(article.id){mutableStateOf(Rect.Zero)}
-    var author by remember(article.id){mutableStateOf(Rect.Zero)}
-    var date by remember(article.id){mutableStateOf(Rect.Zero)}
-    var duration by remember(article.id){mutableStateOf(Rect.Zero)}
+    var bounds by remember(article.id){mutableStateOf<LayoutCoordinates?>(null)}
+    var title by remember(article.id){mutableStateOf<LayoutCoordinates?>(null)}
+    var author by remember(article.id){mutableStateOf<LayoutCoordinates?>(null)}
+    var date by remember(article.id){mutableStateOf<LayoutCoordinates?>(null)}
+    var duration by remember(article.id){mutableStateOf<LayoutCoordinates?>(null)}
+    var restingTop by remember(article.id){mutableFloatStateOf(0f)}
+    fun measured(coordinates: LayoutCoordinates?)=coordinates?.takeIf {it.isAttached}?.articleBoundsInRoot()?:Rect.Zero
     val density=LocalDensity.current.density
     val screenHeight=LocalConfiguration.current.screenHeightDp*density
     val currentClick by rememberUpdatedState(onClick)
-    val enabled by rememberUpdatedState(interactable&&selected)
-    val source by rememberUpdatedState(ArticleSource(article,bounds,title,author,date,duration,ink))
-    val open: ()->Unit={currentClick?.let {read->if(shared&&selected&&expansion!=null)expansion.open(source,read) else read()}}
+    val currentRead by rememberUpdatedState(onRead)
+    val enabled by rememberUpdatedState(interactable&&allowLift)
+    val source by rememberUpdatedState({ArticleSource(article,measured(bounds),measured(title),measured(author),measured(date),measured(duration),ink,readingOrigin?:ArticleOrigin.STACK,stackLayer)})
+    val openReading: ()->Unit={currentRead?.let {read->if(shared&&expansion!=null)expansion.open(source(),read) else read()}}
+    val open: ()->Unit={if(shared&&selected)openReading() else currentClick?.invoke()}
     val click=if(onClick!=null)Modifier.clickable(enabled=interactable&&expansion?.active!=true,onClickLabel=if(selected)"阅读文章" else "选择文章",onClick=open) else Modifier
-    Surface(modifier=modifier.then(click).onGloballyPositioned {if(expansion?.active!=true)bounds=it.articleBoundsInRoot()}.graphicsLayer {
+    val readingTarget=if(shared&&exitRank!=null&&expansion?.active==true&&expansion.source?.article?.id!=article.id)
+        SceneMotion.readingOffset(expansion.progress,exitRank,restingTop,screenHeight) else 0f
+    val readingFollow by animateFloatAsState(readingTarget,SceneMotion.readingFollowerSpring(exitRank?:0),label="reading-list-"+article.id)
+    Surface(modifier=modifier.then(click).onGloballyPositioned {
+        bounds=it;restingTop=it.articleBoundsInRoot().top-readingFollow;expansion?.sourceReady(source())
+    }.graphicsLayer {
         alpha=if(shared&&expansion?.source?.article?.id==article.id)0f else 1f
-        translationY=if(shared&&exitRank!=null&&expansion?.active==true&&expansion.source?.article?.id!=article.id)
-            SceneMotion.readingOffset(expansion.progress,exitRank,bounds.top,screenHeight) else 0f
+        translationY=readingFollow
     },color=colors.surfaceVariant,contentColor=ink,
         shape=RoundedCornerShape(18.dp,18.dp,if(squareBottom)0.dp else 18.dp,if(squareBottom)0.dp else 18.dp),
-        border=BorderStroke(if(selected)1.dp else .5.dp,Color.White.copy(alpha=if(selected).28f else .12f)),shadowElevation=2.dp) {
+        border=BorderStroke(if(selected)1.dp else .5.dp,Color.White.copy(alpha=if(selected).28f else .12f)),shadowElevation=shadowElevation) {
         Box(Modifier.fillMaxSize()) {
             Image(painterResource(articleCoverResource(article,shortBottomBlur)),null,contentScale=ContentScale.Crop,modifier=Modifier.fillMaxSize().testTag(coverTag))
-            Column(Modifier.align(if(topAligned)Alignment.TopStart else Alignment.BottomStart).fillMaxWidth().padding(start=18.dp,end=18.dp,top=if(shared)34.dp else 18.dp,bottom=18.dp)) {
+            Column(Modifier.align(if(topAligned)Alignment.TopStart else Alignment.BottomStart).fillMaxWidth().padding(start=18.dp,end=18.dp,top=if(handle)34.dp else 18.dp,bottom=18.dp)) {
                 Text(article.title,style=MaterialTheme.typography.titleLarge.copy(fontFamily=FontFamily.SansSerif,fontSize=23.sp,lineHeight=29.sp,fontWeight=FontWeight.SemiBold,
                     shadow=if(lightCopy)Shadow.None else Shadow(Color.Black.copy(alpha=.22f),Offset(0f,1f),4f)),maxLines=3,overflow=TextOverflow.Ellipsis,
-                    modifier=Modifier.onGloballyPositioned {title=it.articleBoundsInRoot()}.testTag("card-title-"+article.id))
+                    modifier=Modifier.onGloballyPositioned {title=it;expansion?.sourceReady(source())}.testTag("card-title-"+article.id))
                 Row(Modifier.padding(top=5.dp)) {
-                    Text(article.author.name,style=MaterialTheme.typography.bodySmall.copy(fontSize=13.sp,lineHeight=18.sp),maxLines=1,modifier=Modifier.onGloballyPositioned {author=it.articleBoundsInRoot()})
+                    Text(article.author.name,style=MaterialTheme.typography.bodySmall.copy(fontSize=13.sp,lineHeight=18.sp),maxLines=1,modifier=Modifier.onGloballyPositioned {author=it;expansion?.sourceReady(source())})
                     Text(" · ",style=MaterialTheme.typography.bodySmall.copy(fontSize=13.sp,lineHeight=18.sp))
-                    Text("约 "+article.minutes+" 分钟",style=MaterialTheme.typography.bodySmall.copy(fontSize=13.sp,lineHeight=18.sp),maxLines=1,modifier=Modifier.onGloballyPositioned {duration=it.articleBoundsInRoot()})
+                    Text("约 "+article.minutes+" 分钟",style=MaterialTheme.typography.bodySmall.copy(fontSize=13.sp,lineHeight=18.sp),maxLines=1,modifier=Modifier.onGloballyPositioned {duration=it;expansion?.sourceReady(source())})
                 }
-                Text(article.date,style=MaterialTheme.typography.bodySmall.copy(fontSize=13.sp,lineHeight=18.sp),maxLines=1,modifier=Modifier.onGloballyPositioned {date=it.articleBoundsInRoot()})
+                Text(article.date,style=MaterialTheme.typography.bodySmall.copy(fontSize=13.sp,lineHeight=18.sp),maxLines=1,modifier=Modifier.onGloballyPositioned {date=it;expansion?.sourceReady(source())})
             }
-            if(shared) {
+            if(handle) {
                 val gesture=if(expansion==null)Modifier else Modifier.pointerInput(article.id,expansion) {
                     awaitEachGesture {
                         val down=awaitFirstDown(requireUnconsumed=false)
@@ -93,7 +105,7 @@ fun CoverArticleCard(article: Article,selected: Boolean,modifier: Modifier,cover
                                 val side=abs(down.position.x-change.position.x)
                                 if(!acquired&&change.isConsumed)break
                                 if(!acquired&&up>8f*density&&up>side*1.2f) {
-                                    acquired=expansion.begin(source){currentClick?.invoke()}
+                                    acquired=expansion.begin(source()){currentRead?.invoke()}
                                     if(!acquired){change.consume();break}
                                 }
                                 if(acquired){change.consume();expansion.drag(up/(SceneMotion.LIFT_DISTANCE_DP*density))}
@@ -102,8 +114,8 @@ fun CoverArticleCard(article: Article,selected: Boolean,modifier: Modifier,cover
                     }
                 }
                 Box(Modifier.align(Alignment.TopCenter).size(96.dp,48.dp).then(gesture)
-                    .then(if(selected)Modifier.testTag("article-handle-"+article.id).semantics {contentDescription="上提展开阅读"}
-                        .clickable(enabled=interactable&&expansion?.active!=true,onClickLabel="阅读文章",onClick=open) else Modifier.clearAndSetSemantics {})) {
+                    .then(if(allowLift)Modifier.testTag("article-handle-"+article.id).semantics {contentDescription="上提展开阅读"}
+                        .clickable(enabled=interactable&&expansion?.active!=true,onClickLabel="阅读文章",onClick=openReading) else Modifier.clearAndSetSemantics {})) {
                     Box(Modifier.align(Alignment.TopCenter).padding(top=12.dp).size(32.dp,3.dp).background(ink.copy(alpha=.55f),RoundedCornerShape(2.dp)))
                 }
             }

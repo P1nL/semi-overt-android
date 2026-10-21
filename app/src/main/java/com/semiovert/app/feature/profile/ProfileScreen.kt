@@ -79,7 +79,7 @@ private fun ProfileFeed(profile: PreviewProfile,authorId: String,owner: Boolean,
     val cover=SceneMotion.profileSegment(progress,120f,900f)
     val coverInk=if(profile.cover!=null)Color.White else MaterialTheme.colorScheme.onSecondaryContainer
     val identity: @Composable ()->Unit = {
-            BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal=20.dp).height(281.dp)) {
+            BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal=20.dp).height(281.dp).readingChromeFade()) {
                 val distance=with(density){maxWidth.toPx()+40.dp.toPx()}
                 Surface(shape=RoundedCornerShape(24.dp),color=MaterialTheme.colorScheme.secondaryContainer,
                     modifier=Modifier.fillMaxSize().graphicsLayer {translationX=distance*(1f-panel)}
@@ -102,10 +102,10 @@ private fun ProfileFeed(profile: PreviewProfile,authorId: String,owner: Boolean,
             }
     }
     val records: @Composable ()->Unit = {
-        Column(Modifier.padding(horizontal=20.dp)){RecordCalendar(authorId,owner,snapshots,cleared,textProgress=SceneMotion.profileSegment(progress,400f,1000f))}
+        Column(Modifier.padding(horizontal=20.dp).readingChromeFade()){RecordCalendar(authorId,owner,snapshots,cleared,textProgress=SceneMotion.profileSegment(progress,400f,1000f))}
     }
     val heading: @Composable ()->Unit = {
-        Row(Modifier.fillMaxWidth().padding(horizontal=24.dp).graphicsLayer {alpha=SceneMotion.profileSegment(progress,1000f,1500f)},verticalAlignment=Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().padding(horizontal=24.dp).graphicsLayer {alpha=SceneMotion.profileSegment(progress,1000f,1500f)}.readingChromeFade(),verticalAlignment=Alignment.CenterVertically) {
             Text(if(owner)"公开文章（示例）" else "公开文章 · ${articles.size}（示例）",style=MaterialTheme.typography.labelLarge,
                 modifier=Modifier.testTag("profile-articles-heading"))
             if(owner) {
@@ -159,7 +159,7 @@ fun AuthorScreen(authorId: String,onBack: ()->Unit,onArticle: (String)->Unit) {
     val cover=if(author.id=="zhou")Cover.ARCHITECTURE else null
     Box(Modifier.fillMaxSize().testTag("author-screen")) {
         ProfileFeed(PreviewProfile(author.name,"sample_"+author.id,author.bio,cover=cover),author.id,false,false,false,onArticle)
-        Row(Modifier.fillMaxWidth().statusBarsPadding().heightIn(min=64.dp).padding(horizontal=12.dp),verticalAlignment=Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().statusBarsPadding().heightIn(min=64.dp).padding(horizontal=12.dp).readingChromeFade(),verticalAlignment=Alignment.CenterVertically) {
             IconButton(onClick=onBack){SoIcon(SoSymbol.ARROW,"返回",Modifier.graphicsLayer {rotationZ=180f})}
             Text("作者主页",style=MaterialTheme.typography.labelLarge)
         }

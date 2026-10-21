@@ -1,5 +1,7 @@
 package com.semiovert.app.core.designsystem
 
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 
 enum class FlowPhase { IDLE, ENTER, EXIT }
 
@@ -15,10 +17,37 @@ object SceneMotion {
     const val PROFILE_EXIT_MS = 1500
     const val SEARCH_ENTER_MS = PRIMARY_ELEMENT_MS + DECK_STAGGER_MS
     const val SEARCH_EXIT_MS = PRIMARY_ELEMENT_MS + DECK_STAGGER_MS
-    const val READING_MS = 600
+    const val CATEGORY_SWAP_MS = 420
+    const val DRAWER_MS = 400
+    const val READER_PAGE_EXIT_MS = 400
+    const val STATE_FADE_MS = 300
+    const val MAIN_ICON_MORPH_MS = 400
+    fun navigationSpring()=spring<Float>(dampingRatio=.78f,stiffness=160f,visibilityThreshold=.001f)
     const val LIFT_DISTANCE_DP = 160f
     const val LIFT_THRESHOLD = .45f
+    const val READING_DRAG_STAGE = .55f
+    const val READING_CONTAINER_START = .62f
+    const val READING_EXIT_MS = 1600
     fun segment(value: Float,start: Float,end: Float)=((value-start)/(end-start)).coerceIn(0f,1f)
+    fun readingDrag(raw: Float): Float {
+        val up=raw.coerceAtLeast(0f)
+        val excess=(up-1f).coerceAtLeast(0f)
+        return READING_DRAG_STAGE*if(up<=1f)up else 1f+.12f*excess/(1f+excess)
+    }
+    fun readingReleaseVelocity(velocityDp: Float)=
+        (velocityDp/LIFT_DISTANCE_DP*READING_DRAG_STAGE).coerceIn(-4f,4f)
+    fun readingSpring()=spring<Float>(dampingRatio=.84f,stiffness=105f,visibilityThreshold=.001f)
+    // Slow the committed opening without slowing finger tracking or a cancelled lift.
+    fun readingOpenSpring()=spring<Float>(dampingRatio=.84f,stiffness=24f,visibilityThreshold=.001f)
+    // A return starts at rest: give the early body/avatar stages real time before the card retracts.
+    fun readingCloseSpec()=tween<Float>(READING_EXIT_MS,easing=SoSceneEase)
+    fun readingFollowerSpring(rank: Int)=spring<Float>(dampingRatio=.74f,stiffness=170f/(1f+.15f*rank),visibilityThreshold=.1f)
+    fun readingContainer(progress: Float)=SoEase.transform(segment(progress,READING_CONTAINER_START,1f))
+    fun readingText(progress: Float)=SoEase.transform(segment(progress,.70f,.88f))
+    fun readingAvatar(progress: Float)=SoEase.transform(segment(progress,.88f,.95f))
+    fun readingBody(progress: Float)=SoEase.transform(segment(progress,.92f,1f))
+    fun readingChrome(progress: Float)=SoEase.transform(segment(progress,0f,.36f))
+    fun homeReadingFade(progress: Float)=SoEase.transform(segment(progress,0f,.60f))
     // Windows are real milliseconds, not old 1700ms proportions compressed into a 1s scene.
     fun profileSegment(progress: Float,start: Float,end: Float)=segment(progress*PROFILE_ENTER_MS,start,end)
     fun searchHeader(progress: Float)=SoSceneEase.transform(segment(progress*SEARCH_ENTER_MS,0f,PRIMARY_ELEMENT_MS.toFloat()))
@@ -37,7 +66,8 @@ object SceneMotion {
         return travel*if(phase==FlowPhase.EXIT)SoSceneEase.transform(p) else 1f-SoSceneEase.transform(p)
     }
     fun readingOffset(progress: Float,rank: Int,top: Float,height: Float): Float {
-        val delay=(rank*.045f).coerceAtMost(.18f)
-        return (height+24f-top)*SoEase.transform(segment(progress,delay,.82f+delay))
+        val delay=(rank*.055f).coerceAtMost(.28f)
+        // This is a target, not a spring-shaped time curve. Each card owns a real spring.
+        return (height+24f-top)*segment(progress,delay,.55f+delay)
     }
 }
