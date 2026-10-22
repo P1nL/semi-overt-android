@@ -41,10 +41,13 @@ internal class MainCircleIconState(private val scope: CoroutineScope) {
     private var job: Job?=null
     private var requestedPage: SoSymbol?=null
     private var controlledPage: SoSymbol?=null
+    private var mergeOwner: Any?=null
 
     private fun endpoint(symbol: SoSymbol)=endpoints.getOrPut(symbol) {IconFrame.endpoint(symbol)}
 
-    fun showPage(symbol: SoSymbol,motion: Boolean) {
+    fun showPage(symbol: SoSymbol,motion: Boolean,ownerKey: Any?=null) {
+        if(mergeOwner!=null&&mergeOwner===ownerKey&&requestedPage!=symbol)return
+        mergeOwner=null
         if(controlledPage==null&&requestedPage==symbol) {
             if(!motion){job?.cancel();progress=1f}
             return
@@ -60,7 +63,17 @@ internal class MainCircleIconState(private val scope: CoroutineScope) {
         }
     }
 
-    fun showReading(page: SoSymbol,value: Float) {
+    fun beginMerge(ownerKey: Any,symbol: SoSymbol) {
+        val from=morph?.frame(progress) ?: endpoint(symbol)
+        job?.cancel();controlledPage=null;requestedPage=symbol;mergeOwner=ownerKey
+        morph=MainIconMorph(from,endpoint(symbol));progress=0f
+    }
+
+    fun merge(value: Float) {progress=value.coerceIn(0f,1f)}
+
+    fun showReading(page: SoSymbol,value: Float,ownerKey: Any?=null) {
+        if(mergeOwner!=null&&mergeOwner===ownerKey)return
+        mergeOwner=null
         if(controlledPage!=page) {
             job?.cancel();requestedPage=null;controlledPage=page
             morph=MainIconMorph(endpoint(page),endpoint(SoSymbol.CONTENTS))

@@ -37,6 +37,8 @@ class ProfileSceneMotionTest {
         app.mainClock.autoAdvance=false
         try {
             app.onNodeWithContentDescription("切换到首页").performClick()
+            // Page navigation starts after the accessible menu's 400ms dismissal.
+            app.mainClock.advanceTimeBy(SceneMotion.DRAWER_MS+64L)
             app.mainClock.advanceTimeBy(200)
             app.onNodeWithTag("profile-scene").assertExists()
             // Both routes are mounted; the incoming scene waits in its hidden pose.
@@ -49,7 +51,9 @@ class ProfileSceneMotionTest {
         app.mainClock.autoAdvance=false
         try {
             app.onNodeWithContentDescription("切换到我的").performClick()
-            app.mainClock.advanceTimeBy(PageHandoff(Destination.HOME,Destination.PROFILE).enterDelayMillis+360L)
+            app.mainClock.advanceTimeBy(SceneMotion.DRAWER_MS+64L)
+            val handoff=PageHandoff(Destination.HOME,Destination.PROFILE,profileGuest=!signedIn)
+            app.mainClock.advanceTimeBy(handoff.enterDelayMillis+minOf(360,handoff.enterMillis/2).toLong())
             app.onNodeWithTag("profile-scene").assertExists()
             val enteringLeft=app.onNodeWithTag(contentTag).fetchSemanticsNode().boundsInRoot.left
             assertTrue("Restored profile starts off to the right, instead of skipping its entrance",enteringLeft>restingLeft+1f)

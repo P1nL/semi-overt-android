@@ -7,6 +7,29 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class PageHandoffTest {
+    @Test fun authorUsesSignedInProfileMotionEvenWhenTheViewerIsAGuest() {
+        val entering=PageHandoff.between("search","author/{authorId}",profileGuest=true)!!
+        assertEquals(Destination.PROFILE,entering.to)
+        assertEquals(SceneMotion.PROFILE_ENTER_MS,entering.enterMillis)
+        val leaving=PageHandoff.between("author/{authorId}","home",profileGuest=true)!!
+        assertEquals(SceneMotion.PROFILE_EXIT_MS,leaving.exitMillis)
+        assertNotNull(PageHandoff.between("author/{authorId}","profile",profileGuest=true))
+    }
+    @Test fun searchEntranceExitAndSharedAvatarUseTheSameFasterClock() {
+        val entering=PageHandoff(Destination.HOME,Destination.SEARCH)
+        assertEquals(900,entering.enterMillis)
+        assertEquals(750,entering.identityMillis)
+        assertEquals(450,entering.enterDelayMillis)
+        assertEquals(1350,entering.totalMillis)
+        val leaving=PageHandoff(Destination.SEARCH,Destination.CATEGORY)
+        assertEquals(900,leaving.exitMillis)
+        assertEquals(750,leaving.identityMillis)
+        assertEquals(1180,leaving.enterMillis)
+        assertEquals(450,leaving.enterDelayMillis)
+        assertEquals(1630,leaving.totalMillis)
+        assertEquals(450,PageHandoff(Destination.PROFILE,Destination.SEARCH,true).identityMillis)
+    }
+
     @Test fun readerNavigationSlidesOutInFourHundredMillisecondsAndOverlapsEachPrimaryPage() {
         for(page in Destination.entries) {
             val handoff=PageHandoff.between("reader/{articleId}",page.route)!!
@@ -37,6 +60,16 @@ class PageHandoffTest {
         }
     }
 
+    @Test fun guestAndSignedInProfilesHaveSeparateCompleteClocks() {
+        val signedIn=PageHandoff(Destination.HOME,Destination.PROFILE)
+        assertEquals(1550,signedIn.totalMillis)
+        val guest=PageHandoff(Destination.HOME,Destination.PROFILE,profileGuest=true)
+        assertEquals(450,guest.enterMillis)
+        assertEquals(900,guest.totalMillis)
+        assertEquals(1180,PageHandoff(Destination.CATEGORY,Destination.PROFILE,true).totalMillis)
+        assertEquals(450,PageHandoff(Destination.PROFILE,Destination.HOME,true).exitMillis)
+        assertEquals(1680,PageHandoff(Destination.PROFILE,Destination.HOME).totalMillis)
+    }
     @Test fun readerSecondaryAndSameRouteDoNotReplaySceneEntrances() {
         assertNull(PageHandoff.between("home","reader/{articleId}"))
         assertNull(PageHandoff.between("settings","profile"))

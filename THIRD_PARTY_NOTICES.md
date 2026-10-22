@@ -1,8 +1,15 @@
 # Third-party asset provenance
 
-## Identity animation
+## Current guest identity icon
 
-The offline identity intro reuses the existing Semi-Overt design asset exported from
+The current guest intro and resting avatar are native vector renderings of the
+user-supplied SVG/Svelte snippet (a user outline with a 600ms head/body bounce),
+adapted to keep the shoulders stationary after rising and bounce only the head.
+They do not load or play the historical PNG sprites below.
+
+## Historical identity animation assets
+
+The retained historical assets came from the existing Semi-Overt design export at
 `src/shared/assets/lottie/login-attribution.json` in the Semi-Overt web project,
 which is played there through Lordicon (`hover-attribution`).
 

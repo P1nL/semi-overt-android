@@ -1,0 +1,323 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - link "morphicons" [ref=e4] [cursor=pointer]:
+        - /url: /
+      - navigation [ref=e7]:
+        - link "Playground" [ref=e8] [cursor=pointer]:
+          - /url: /
+        - link "Showcase" [ref=e9] [cursor=pointer]:
+          - /url: /showcase
+        - link "Docs" [ref=e10] [cursor=pointer]:
+          - /url: /docs
+        - link "Roadmap" [ref=e11] [cursor=pointer]:
+          - /url: /roadmap
+        - link "GitHub" [ref=e12] [cursor=pointer]:
+          - /url: https://github.com/guillermolg00/morphicons
+        - link "X" [ref=e13] [cursor=pointer]:
+          - /url: https://x.com/guillermolg00
+    - main [ref=e14]:
+      - generic [ref=e15]:
+        - heading "Morph any SVG icon into any other." [level=1] [ref=e16]
+        - paragraph [ref=e17]: Lucide, Tabler, Heroicons or any icon set, stroked or filled. Spring physics, zero dependencies, nothing to configure.
+        - generic [ref=e19]:
+          - generic [aria-hidden] [ref=e20]: $
+          - text: npm install morphicons
+          - button "Copy to clipboard" [ref=e21] [cursor=pointer]
+      - region "Morph studio" [ref=e24]:
+        - generic [ref=e25]:
+          - generic [ref=e26]:
+            - generic [ref=e27]:
+              - generic [ref=e28]: spring
+              - group "spring" [ref=e29]:
+                - button "smooth" [ref=e30] [cursor=pointer]
+                - button "snappy" [pressed] [ref=e31] [cursor=pointer]
+                - button "bouncy" [ref=e32] [cursor=pointer]
+            - generic [ref=e33]:
+              - generic [ref=e34]: speed
+              - group "speed" [ref=e35]:
+                - button "0.25×" [ref=e36] [cursor=pointer]
+                - button "0.5×" [ref=e37] [cursor=pointer]
+                - button "1×" [pressed] [ref=e38] [cursor=pointer]
+                - button "2×" [ref=e39] [cursor=pointer]
+            - generic [ref=e40]:
+              - generic [ref=e41]: stroke
+              - group "stroke" [ref=e42]:
+                - button "1" [ref=e43] [cursor=pointer]
+                - button "1.5" [ref=e44] [cursor=pointer]
+                - button "2" [pressed] [ref=e45] [cursor=pointer]
+                - button "2.5" [ref=e46] [cursor=pointer]
+          - generic [ref=e47]:
+            - generic [ref=e48]:
+              - button "Morph to the next icon in your set" [ref=e49] [cursor=pointer]
+              - generic [ref=e52]: pick icons to morph between them
+              - generic [ref=e54]:
+                - button "Pause the sequence" [pressed] [ref=e55] [cursor=pointer]
+                - slider "Scrub the morph between the previous and current icon" [disabled] [ref=e58]: "1"
+                - generic [ref=e59]: t=1.00
+              - generic [ref=e60]:
+                - button "Morph to moon (Lucide)" [ref=e62] [cursor=pointer]
+                - button "Morph to sun (Lucide)" [ref=e66] [cursor=pointer]
+                - button "Morph to play (Tabler)" [ref=e72] [cursor=pointer]
+                - button "Morph to stop (Heroicons)" [ref=e76] [cursor=pointer]
+                - button "Morph to copy (Bootstrap Icons)" [ref=e80] [cursor=pointer]
+                - button "Morph to check-circle (Phosphor)" [ref=e84] [cursor=pointer]
+                - button "Morph to thumbs-up (Heroicons)" [ref=e88] [cursor=pointer]
+                - button "Morph to upload (Heroicons)" [ref=e92] [cursor=pointer]
+                - button "Morph to download (Heroicons)" [ref=e96] [cursor=pointer]
+                - button "Morph to lock (Heroicons)" [ref=e100] [cursor=pointer]
+                - button "Morph to shield (Heroicons)" [ref=e104] [cursor=pointer]
+            - generic [ref=e107]:
+              - generic [ref=e108]:
+                - 'button "Icon library: Lucide" [ref=e110] [cursor=pointer]':
+                  - generic [ref=e114]: Lucide
+                  - generic [ref=e115]: "175"
+                - group "Icon style" [ref=e119]:
+                  - button "Outline" [pressed] [ref=e120] [cursor=pointer]
+                  - button "Fill" [ref=e121] [cursor=pointer]
+                - searchbox "Search icons" [ref=e123]
+              - generic [ref=e124]:
+                - button "Add menu (Lucide, outline)" [ref=e125] [cursor=pointer]
+                - button "Add x (Lucide, outline)" [ref=e128] [cursor=pointer]
+                - button "Add check (Lucide, outline)" [ref=e131] [cursor=pointer]
+                - button "Add plus (Lucide, outline)" [ref=e134] [cursor=pointer]
+                - button "Add minus (Lucide, outline)" [ref=e137] [cursor=pointer]
+                - button "Add arrow-right (Lucide, outline)" [ref=e139] [cursor=pointer]
+                - button "Add arrow-left (Lucide, outline)" [ref=e142] [cursor=pointer]
+                - button "Add arrow-up (Lucide, outline)" [ref=e145] [cursor=pointer]
+                - button "Add arrow-down (Lucide, outline)" [ref=e148] [cursor=pointer]
+                - button "Add chevron-right (Lucide, outline)" [ref=e151] [cursor=pointer]
+                - button "Add chevron-left (Lucide, outline)" [ref=e154] [cursor=pointer]
+                - button "Add chevron-up (Lucide, outline)" [ref=e157] [cursor=pointer]
+                - button "Add chevron-down (Lucide, outline)" [ref=e160] [cursor=pointer]
+                - button "Add home (Lucide, outline)" [ref=e163] [cursor=pointer]
+                - button "Add search (Lucide, outline)" [ref=e168] [cursor=pointer]
+                - button "Add settings (Lucide, outline)" [ref=e173] [cursor=pointer]
+                - button "Add user (Lucide, outline)" [ref=e178] [cursor=pointer]
+                - button "Add users (Lucide, outline)" [ref=e183] [cursor=pointer]
+                - button "Add bell (Lucide, outline)" [ref=e188] [cursor=pointer]
+                - button "Add heart (Lucide, outline)" [ref=e191] [cursor=pointer]
+                - button "Add star (Lucide, outline)" [ref=e194] [cursor=pointer]
+                - button "Add bookmark (Lucide, outline)" [ref=e197] [cursor=pointer]
+                - button "Add trash (Lucide, outline)" [ref=e200] [cursor=pointer]
+                - button "Add edit (Lucide, outline)" [ref=e203] [cursor=pointer]
+                - button "Add copy (Lucide, outline)" [ref=e206] [cursor=pointer]
+                - button "Add download (Lucide, outline)" [ref=e211] [cursor=pointer]
+                - button "Add upload (Lucide, outline)" [ref=e216] [cursor=pointer]
+                - button "Add share (Lucide, outline)" [ref=e219] [cursor=pointer]
+                - button "Add link (Lucide, outline)" [ref=e222] [cursor=pointer]
+                - button "Add external-link (Lucide, outline)" [ref=e227] [cursor=pointer]
+                - button "Add filter (Lucide, outline)" [ref=e230] [cursor=pointer]
+                - button "Add sort (Lucide, outline)" [ref=e233] [cursor=pointer]
+                - button "Add refresh (Lucide, outline)" [ref=e236] [cursor=pointer]
+                - button "Add more (Lucide, outline)" [ref=e242] [cursor=pointer]
+                - button "Add more-vertical (Lucide, outline)" [ref=e248] [cursor=pointer]
+                - button "Add eye (Lucide, outline)" [ref=e254] [cursor=pointer]
+                - button "Add eye-off (Lucide, outline)" [ref=e259] [cursor=pointer]
+                - button "Add lock (Lucide, outline)" [ref=e264] [cursor=pointer]
+                - button "Add unlock (Lucide, outline)" [ref=e269] [cursor=pointer]
+                - button "Add key (Lucide, outline)" [ref=e274] [cursor=pointer]
+                - button "Add shield (Lucide, outline)" [ref=e279] [cursor=pointer]
+                - button "Add login (Lucide, outline)" [ref=e282] [cursor=pointer]
+                - button "Add logout (Lucide, outline)" [ref=e285] [cursor=pointer]
+                - button "Add mail (Lucide, outline)" [ref=e288] [cursor=pointer]
+                - button "Add send (Lucide, outline)" [ref=e293] [cursor=pointer]
+                - button "Add chat (Lucide, outline)" [ref=e296] [cursor=pointer]
+                - button "Add phone (Lucide, outline)" [ref=e299] [cursor=pointer]
+                - button "Add video (Lucide, outline)" [ref=e302] [cursor=pointer]
+                - button "Add camera (Lucide, outline)" [ref=e307] [cursor=pointer]
+                - button "Add image (Lucide, outline)" [ref=e312] [cursor=pointer]
+                - button "Add mic (Lucide, outline)" [ref=e318] [cursor=pointer]
+                - button "Add play (Lucide, outline)" [ref=e323] [cursor=pointer]
+                - button "Add pause (Lucide, outline)" [ref=e326] [cursor=pointer]
+                - button "Add stop (Lucide, outline)" [ref=e331] [cursor=pointer]
+                - button "Add skip-forward (Lucide, outline)" [ref=e334] [cursor=pointer]
+                - button "Add skip-back (Lucide, outline)" [ref=e337] [cursor=pointer]
+                - button "Add volume (Lucide, outline)" [ref=e340] [cursor=pointer]
+                - button "Add volume-x (Lucide, outline)" [ref=e343] [cursor=pointer]
+                - button "Add music (Lucide, outline)" [ref=e346] [cursor=pointer]
+                - button "Add headphones (Lucide, outline)" [ref=e352] [cursor=pointer]
+                - button "Add calendar (Lucide, outline)" [ref=e355] [cursor=pointer]
+                - button "Add clock (Lucide, outline)" [ref=e360] [cursor=pointer]
+                - button "Add alarm (Lucide, outline)" [ref=e365] [cursor=pointer]
+                - button "Add timer (Lucide, outline)" [ref=e370] [cursor=pointer]
+                - button "Add map-pin (Lucide, outline)" [ref=e375] [cursor=pointer]
+                - button "Add map (Lucide, outline)" [ref=e380] [cursor=pointer]
+                - button "Add globe (Lucide, outline)" [ref=e383] [cursor=pointer]
+                - button "Add compass (Lucide, outline)" [ref=e388] [cursor=pointer]
+                - button "Add navigation (Lucide, outline)" [ref=e393] [cursor=pointer]
+                - button "Add flag (Lucide, outline)" [ref=e396] [cursor=pointer]
+                - button "Add sun (Lucide, outline)" [pressed] [ref=e399] [cursor=pointer]
+                - button "Add moon (Lucide, outline)" [pressed] [ref=e404] [cursor=pointer]
+                - button "Add cloud (Lucide, outline)" [ref=e407] [cursor=pointer]
+                - button "Add umbrella (Lucide, outline)" [ref=e410] [cursor=pointer]
+                - button "Add snowflake (Lucide, outline)" [ref=e415] [cursor=pointer]
+                - button "Add bolt (Lucide, outline)" [ref=e421] [cursor=pointer]
+                - button "Add fire (Lucide, outline)" [ref=e424] [cursor=pointer]
+                - button "Add droplet (Lucide, outline)" [ref=e427] [cursor=pointer]
+                - button "Add leaf (Lucide, outline)" [ref=e430] [cursor=pointer]
+                - button "Add tree (Lucide, outline)" [ref=e435] [cursor=pointer]
+                - button "Add wifi (Lucide, outline)" [ref=e438] [cursor=pointer]
+                - button "Add bluetooth (Lucide, outline)" [ref=e441] [cursor=pointer]
+                - button "Add battery (Lucide, outline)" [ref=e444] [cursor=pointer]
+                - button "Add plug (Lucide, outline)" [ref=e448] [cursor=pointer]
+                - button "Add power (Lucide, outline)" [ref=e451] [cursor=pointer]
+                - button "Add monitor (Lucide, outline)" [ref=e454] [cursor=pointer]
+                - button "Add smartphone (Lucide, outline)" [ref=e459] [cursor=pointer]
+                - button "Add tablet (Lucide, outline)" [ref=e463] [cursor=pointer]
+                - button "Add printer (Lucide, outline)" [ref=e467] [cursor=pointer]
+                - button "Add keyboard (Lucide, outline)" [ref=e472] [cursor=pointer]
+                - button "Add mouse (Lucide, outline)" [ref=e477] [cursor=pointer]
+                - button "Add server (Lucide, outline)" [ref=e481] [cursor=pointer]
+                - button "Add database (Lucide, outline)" [ref=e487] [cursor=pointer]
+                - button "Add cpu (Lucide, outline)" [ref=e493] [cursor=pointer]
+                - button "Add terminal (Lucide, outline)" [ref=e499] [cursor=pointer]
+                - button "Add code (Lucide, outline)" [ref=e502] [cursor=pointer]
+                - button "Add git-branch (Lucide, outline)" [ref=e505] [cursor=pointer]
+                - button "Add bug (Lucide, outline)" [ref=e511] [cursor=pointer]
+                - button "Add file (Lucide, outline)" [ref=e516] [cursor=pointer]
+                - button "Add folder (Lucide, outline)" [ref=e521] [cursor=pointer]
+                - button "Add folder-open (Lucide, outline)" [ref=e524] [cursor=pointer]
+                - button "Add archive (Lucide, outline)" [ref=e527] [cursor=pointer]
+                - button "Add clipboard (Lucide, outline)" [ref=e532] [cursor=pointer]
+                - button "Add paperclip (Lucide, outline)" [ref=e537] [cursor=pointer]
+                - button "Add save (Lucide, outline)" [ref=e540] [cursor=pointer]
+                - button "Add inbox (Lucide, outline)" [ref=e545] [cursor=pointer]
+                - button "Add tag (Lucide, outline)" [ref=e550] [cursor=pointer]
+                - button "Add cart (Lucide, outline)" [ref=e555] [cursor=pointer]
+                - button "Add bag (Lucide, outline)" [ref=e562] [cursor=pointer]
+                - button "Add credit-card (Lucide, outline)" [ref=e567] [cursor=pointer]
+                - button "Add wallet (Lucide, outline)" [ref=e572] [cursor=pointer]
+                - button "Add gift (Lucide, outline)" [ref=e577] [cursor=pointer]
+                - button "Add truck (Lucide, outline)" [ref=e582] [cursor=pointer]
+                - button "Add package (Lucide, outline)" [ref=e588] [cursor=pointer]
+                - button "Add store (Lucide, outline)" [ref=e593] [cursor=pointer]
+                - button "Add receipt (Lucide, outline)" [ref=e598] [cursor=pointer]
+                - button "Add chart (Lucide, outline)" [ref=e603] [cursor=pointer]
+                - button "Add trending-up (Lucide, outline)" [ref=e606] [cursor=pointer]
+                - button "Add activity (Lucide, outline)" [ref=e611] [cursor=pointer]
+                - button "Add layers (Lucide, outline)" [ref=e614] [cursor=pointer]
+                - button "Add grid (Lucide, outline)" [ref=e620] [cursor=pointer]
+                - button "Add list (Lucide, outline)" [ref=e627] [cursor=pointer]
+                - button "Add layout (Lucide, outline)" [ref=e630] [cursor=pointer]
+                - button "Add sliders (Lucide, outline)" [ref=e635] [cursor=pointer]
+                - button "Add info (Lucide, outline)" [ref=e638] [cursor=pointer]
+                - button "Add help (Lucide, outline)" [ref=e643] [cursor=pointer]
+                - button "Add alert (Lucide, outline)" [ref=e648] [cursor=pointer]
+                - button "Add warning (Lucide, outline)" [ref=e653] [cursor=pointer]
+                - button "Add check-circle (Lucide, outline)" [ref=e656] [cursor=pointer]
+                - button "Add x-circle (Lucide, outline)" [ref=e661] [cursor=pointer]
+                - button "Add thumbs-up (Lucide, outline)" [ref=e666] [cursor=pointer]
+                - button "Add thumbs-down (Lucide, outline)" [ref=e669] [cursor=pointer]
+                - button "Add smile (Lucide, outline)" [ref=e672] [cursor=pointer]
+                - button "Add award (Lucide, outline)" [ref=e677] [cursor=pointer]
+                - button "Add crown (Lucide, outline)" [ref=e682] [cursor=pointer]
+                - button "Add sparkles (Lucide, outline)" [ref=e685] [cursor=pointer]
+                - button "Add rocket (Lucide, outline)" [ref=e690] [cursor=pointer]
+                - button "Add lightbulb (Lucide, outline)" [ref=e696] [cursor=pointer]
+                - button "Add palette (Lucide, outline)" [ref=e699] [cursor=pointer]
+                - button "Add brush (Lucide, outline)" [ref=e707] [cursor=pointer]
+                - button "Add scissors (Lucide, outline)" [ref=e712] [cursor=pointer]
+                - button "Add wrench (Lucide, outline)" [ref=e719] [cursor=pointer]
+                - button "Add puzzle (Lucide, outline)" [ref=e722] [cursor=pointer]
+                - button "Add book (Lucide, outline)" [ref=e725] [cursor=pointer]
+                - button "Add graduation (Lucide, outline)" [ref=e728] [cursor=pointer]
+                - button "Add briefcase (Lucide, outline)" [ref=e733] [cursor=pointer]
+                - button "Add building (Lucide, outline)" [ref=e738] [cursor=pointer]
+                - button "Add car (Lucide, outline)" [ref=e743] [cursor=pointer]
+                - button "Add plane (Lucide, outline)" [ref=e749] [cursor=pointer]
+                - button "Add coffee (Lucide, outline)" [ref=e752] [cursor=pointer]
+                - button "Add pizza (Lucide, outline)" [ref=e755] [cursor=pointer]
+                - button "Add anchor (Lucide, outline)" [ref=e760] [cursor=pointer]
+                - button "Add feather (Lucide, outline)" [ref=e765] [cursor=pointer]
+                - button "Add diamond (Lucide, outline)" [ref=e768] [cursor=pointer]
+                - button "Add circle (Lucide, outline)" [ref=e771] [cursor=pointer]
+                - button "Add triangle (Lucide, outline)" [ref=e774] [cursor=pointer]
+                - button "Add hexagon (Lucide, outline)" [ref=e777] [cursor=pointer]
+                - button "Add ghost (Lucide, outline)" [ref=e780] [cursor=pointer]
+                - button "Add cat (Lucide, outline)" [ref=e783] [cursor=pointer]
+                - button "Add dog (Lucide, outline)" [ref=e788] [cursor=pointer]
+                - button "Add fish (Lucide, outline)" [ref=e794] [cursor=pointer]
+                - button "Add skull (Lucide, outline)" [ref=e800] [cursor=pointer]
+                - button "Add film (Lucide, outline)" [ref=e807] [cursor=pointer]
+                - button "Add gamepad (Lucide, outline)" [ref=e812] [cursor=pointer]
+                - button "Add qr-code (Lucide, outline)" [ref=e817] [cursor=pointer]
+                - button "Add fingerprint (Lucide, outline)" [ref=e824] [cursor=pointer]
+                - button "Add at (Lucide, outline)" [ref=e829] [cursor=pointer]
+                - button "Add hash (Lucide, outline)" [ref=e834] [cursor=pointer]
+                - button "Add zoom-in (Lucide, outline)" [ref=e837] [cursor=pointer]
+                - button "Add maximize (Lucide, outline)" [ref=e842] [cursor=pointer]
+                - button "Add minimize (Lucide, outline)" [ref=e845] [cursor=pointer]
+                - button "Add undo (Lucide, outline)" [ref=e848] [cursor=pointer]
+                - button "Add redo (Lucide, outline)" [ref=e853] [cursor=pointer]
+                - button "Add shuffle (Lucide, outline)" [ref=e858] [cursor=pointer]
+                - button "Add repeat (Lucide, outline)" [ref=e863] [cursor=pointer]
+              - paragraph [ref=e869]: "Click an icon to add it to your set. Any icon morphs into any other: across libraries, grids, and outline to fill."
+      - generic [ref=e871]:
+        - generic [ref=e872]:
+          - generic [ref=e873]:
+            - tablist "Framework" [ref=e874]:
+              - tab "React" [selected] [ref=e875] [cursor=pointer]
+              - tab "Vue" [ref=e878] [cursor=pointer]
+              - tab "Svelte" [ref=e881] [cursor=pointer]
+              - tab "React Native" [ref=e884] [cursor=pointer]
+              - tab "Astro" [ref=e887] [cursor=pointer]
+            - generic [ref=e890]:
+              - generic [ref=e891]: tsx
+              - button "Copy to clipboard" [ref=e892] [cursor=pointer]
+          - tabpanel "React" [ref=e895]:
+            - code [ref=e896]: "import { MorphIcon } from \"morphicons/react\"; import { Menu, X } from \"lucide\"; // data, not components <button onClick={() => setOpen(o => !o)} aria-expanded={open}> <MorphIcon icon={open ? X : Menu} /> </button>"
+        - paragraph [ref=e897]: That is the whole thing, in React, Vue, Svelte, React Native or Astro. No wrappers, keys or configuration. Swap the pair for any two icons above.
+      - generic [ref=e899]:
+        - generic [ref=e900]:
+          - generic [ref=e901]:
+            - heading "Closed-form math, no config." [level=2] [ref=e902]
+            - paragraph [ref=e903]: morphicons solves the rotation, scale and translation that best map one icon onto the other, in closed form. Shapes that match under rotation simply rotate, and filled icons morph as filled shapes.
+            - paragraph [ref=e904]:
+              - text: "Icons are consumed as data, not components: a"
+              - code [ref=e905]: d
+              - text: attribute or Lucide’s
+              - code [ref=e906]: IconNode
+              - text: format. No per-library setup.
+            - link "See the full docs" [ref=e907] [cursor=pointer]:
+              - /url: /docs
+          - generic [ref=e910]:
+            - generic [ref=e911]:
+              - term [ref=e912]: gzip with a framework binding
+              - definition [ref=e913]: 10 KB
+            - generic [ref=e914]:
+              - term [ref=e915]: runtime dependencies
+              - definition [ref=e916]: "0"
+            - generic [ref=e917]:
+              - term [ref=e918]: framework bindings, plus vanilla JS
+              - definition [ref=e919]: "5"
+            - generic [ref=e920]:
+              - term [ref=e921]: shared rAF for every icon on screen
+              - definition [ref=e922]: "1"
+        - generic [ref=e923]:
+          - paragraph [ref=e924]: Works with any icon set, stroked or filled, on any grid via fitIcon.
+          - list [ref=e925]:
+            - listitem [ref=e926]: Lucide
+            - listitem [ref=e927]: Tabler
+            - listitem [ref=e928]: Heroicons
+            - listitem [ref=e929]: Iconoir
+            - listitem [ref=e930]: Material Symbols
+            - listitem [ref=e931]: Phosphor
+            - listitem [ref=e932]: Hugeicons
+            - listitem [ref=e933]: shadcn registry
+    - contentinfo [ref=e934]:
+      - generic [ref=e935]:
+        - generic [ref=e936]: morphicons, MIT license.
+        - generic [ref=e939]:
+          - text: Demo icons belong to their authors, see the
+          - link "credits" [ref=e940] [cursor=pointer]:
+            - /url: /docs#credits
+          - text: .
+        - generic [ref=e941]:
+          - link "GitHub" [ref=e942] [cursor=pointer]:
+            - /url: https://github.com/guillermolg00/morphicons
+          - link "llms.txt" [ref=e943] [cursor=pointer]:
+            - /url: /llms.txt
+          - link "Made by guillermolg.com" [ref=e944] [cursor=pointer]:
+            - /url: https://guillermolg.com
+  - alert [ref=e945]

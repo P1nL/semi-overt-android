@@ -84,7 +84,7 @@ fun ReaderScreen(onBack: ()->Unit,onAuthor: (String)->Unit,onNavigate: (Destinat
     BackHandler(!contentsOpen&&expansion?.active!=true) {
         if(expansion==null)onBack() else expansion.close(article.id,onBack)
     }
-    BrowseScene(origin,"",{expansion?.forgetOrigins();onNavigate(it)},onPrimary={model.contents(true)},showHeader=false,readerMode=true) {
+    BrowseScene(origin,"",onNavigate,onPrimary={model.contents(true)},showHeader=false,readerMode=true) {
         ReaderArticleLayout(article,list,onAuthor)
     }
     if(contentsOpen)SoBottomSheet(onDismissRequest={model.contents(false)}) {close ->

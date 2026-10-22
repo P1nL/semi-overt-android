@@ -1,10 +1,8 @@
 package com.semiovert.app.core.designsystem
 
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.animation.core.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -31,24 +29,15 @@ class IdentityAnchor(val signedIn: Boolean,val avatar: Int) {
 val LocalIdentity=staticCompositionLocalOf {IdentityAnchor(false,0)}
 val LocalIntroReady=compositionLocalOf {true}
 
-private fun DrawScope.drawIdentityFrame(atlases: List<ImageBitmap>,frame: Int,rect: Rect,tint: Color,opacity: Float=1f,mode: BlendMode=BlendMode.SrcOver) {
-    val local=frame%30
-    drawImage(atlases[frame/30],srcOffset=IntOffset(local%6*480,local/6*480),srcSize=IntSize(480,480),
-        dstOffset=IntOffset(rect.left.roundToInt(),rect.top.roundToInt()),dstSize=IntSize(rect.width.roundToInt(),rect.height.roundToInt()),
-        alpha=opacity,colorFilter=ColorFilter.tint(tint),filterQuality=FilterQuality.High,blendMode=mode)
-}
-
 @Composable
 fun IdentityAvatar(modifier: Modifier=Modifier,size: Int=40,registerAnchor: Boolean=true) {
     val anchor=LocalIdentity.current
-    val context=LocalContext.current
-    val still=remember {context.assets.open("identity/guest-still.png").use {BitmapFactory.decodeStream(it).asImageBitmap()}}
-    val tint=MaterialTheme.colorScheme.onSecondary
-    val background=MaterialTheme.colorScheme.secondary
+    val guest=remember {GuestIdentityPainter()}
+    val tint=guestIdentityInk(MaterialTheme.colorScheme.background)
     if(!registerAnchor) {
         Box(modifier.size(size.dp)) {
             if(anchor.signedIn)ProfileAvatar(anchor.avatar,size)
-            else Canvas(Modifier.fillMaxSize().clip(CircleShape)){drawCircle(background);drawImage(still,dstSize=IntSize(this.size.width.roundToInt(),this.size.height.roundToInt()),colorFilter=ColorFilter.tint(tint))}
+            else Canvas(Modifier.fillMaxSize()){guest.draw(this,Rect(Offset.Zero,this.size),tint)}
         }
         return
     }
@@ -62,39 +51,44 @@ fun IdentityAvatar(modifier: Modifier=Modifier,size: Int=40,registerAnchor: Bool
         if(!recorded)recorded=true
     }) {
         if(anchor.signedIn)ProfileAvatar(anchor.avatar,size)
-        else Canvas(Modifier.fillMaxSize().clip(CircleShape)) {drawCircle(background);drawImage(still,dstSize=IntSize(this.size.width.roundToInt(),this.size.height.roundToInt()),colorFilter=ColorFilter.tint(tint))}
+        else Canvas(Modifier.fillMaxSize()) {guest.draw(this,Rect(Offset.Zero,this.size),tint)}
     }
 }
 
 @Composable
-fun IdentityIntroHost(signedIn: Boolean,avatar: Int,content: @Composable ()->Unit) {
+fun IdentityIntroHost(signedIn: Boolean,avatar: Int,canStart: Boolean=true,content: @Composable ()->Unit) {
     val anchor=remember(signedIn,avatar) {IdentityAnchor(signedIn,avatar)}
     var played by rememberSaveable {mutableStateOf(false)}
     val motion=LocalMotionEnabled.current
-    val context=LocalContext.current
     val background=MaterialTheme.colorScheme.background
     val ink=MaterialTheme.colorScheme.primary
-    val avatarTint=MaterialTheme.colorScheme.onSecondary
     val avatarBackground=MaterialTheme.colorScheme.secondary
+    val guestInk=guestIdentityInk(background)
+    val guest=remember {GuestIdentityPainter()}
     val ring=remember {Animatable(0f)}
     val pixels=remember {Animatable(0f)}
-    val playback=remember {Animatable(0f)}
+    val rise=remember {Animatable(0f)}
+    val bounce=remember {Animatable(0f)}
     val morph=remember {Animatable(0f)}
-    val framePaint=remember {Paint()}
     CompositionLocalProvider(LocalIdentity provides anchor,LocalIntroReady provides (played||!motion||morph.value>.15f)) {
         Box(Modifier.fillMaxSize()) {
             content()
             if(!played&&motion) {
-                // Source: 90 original 60-fps frames, blended at the display cadence without respeeding.
-                val atlases=remember {if(signedIn)emptyList() else (0..2).map {index ->context.assets.open("identity/guest-frames-$index.png").use {BitmapFactory.decodeStream(it).asImageBitmap()}}}
                 var coarse by remember {mutableStateOf<List<ImageBitmap>>(emptyList())}
-                LaunchedEffect(Unit) {
+                LaunchedEffect(canStart) {
                     anchor.playing=true
+                    if(!canStart)return@LaunchedEffect
+                    // Start the clock on a visible app frame, not beneath the system splash.
+                    withFrameNanos { }
                     ring.animateTo(1f,tween(500,easing=SoEase))
-                    val source=anchor.image?.asAndroidBitmap()?.let {if(it.config==Bitmap.Config.HARDWARE)it.copy(Bitmap.Config.ARGB_8888,false) else it}
-                    if(source!=null)coarse=listOf(8,12,20,32,64,128).map {Bitmap.createScaledBitmap(source,it,it,false).asImageBitmap()}
-                    pixels.animateTo(1f,tween(560,easing=LinearEasing))
-                    if(!signedIn)playback.animateTo(IdentityPlayback.FRAME_COUNT-.001f,tween(IdentityPlayback.DURATION_MILLIS,easing=LinearEasing))
+                    if(signedIn) {
+                        val source=anchor.image?.asAndroidBitmap()?.let {if(it.config==Bitmap.Config.HARDWARE)it.copy(Bitmap.Config.ARGB_8888,false) else it}
+                        if(source!=null)coarse=listOf(8,12,20,32,64,128).map {Bitmap.createScaledBitmap(source,it,it,false).asImageBitmap()}
+                        pixels.animateTo(1f,tween(560,easing=LinearEasing))
+                    } else {
+                        rise.animateTo(1f,tween(GuestIdentityMotion.RISE_MILLIS,easing=SoSceneEase))
+                        bounce.animateTo(1f,tween(GuestIdentityMotion.BOUNCE_MILLIS,easing=LinearEasing))
+                    }
                     morph.animateTo(1f,tween(580,easing=SoEase))
                     played=true;anchor.playing=false
                 }
@@ -110,7 +104,8 @@ fun IdentityIntroHost(signedIn: Boolean,avatar: Int,content: @Composable ()->Uni
                         clipPath(Path().apply {addOval(Rect(destination.center,revealRadius))},ClipOp.Difference) {drawRect(background)}
                     }
                     val rect=Rect(center,diameter/2f)
-                    if(ring.value<1f)drawArc(ink,-90f,360f*ring.value,false,rect.topLeft,rect.size,style=Stroke(2.dp.toPx(),cap=StrokeCap.Round))
+                    if(!signedIn)guest.draw(this,rect,guestInk,ring.value,rise.value,bounce.value)
+                    else if(ring.value<1f)drawArc(ink,-90f,360f*ring.value,false,rect.topLeft,rect.size,style=Stroke(2.dp.toPx(),cap=StrokeCap.Round))
                     else {
                         drawCircle(avatarBackground,diameter/2f,center)
                         val clip=Path().apply {addOval(rect)}
@@ -122,17 +117,6 @@ fun IdentityIntroHost(signedIn: Boolean,avatar: Int,content: @Composable ()->Uni
                                     val tiles=Path()
                                     for(row in 0..7)for(column in 0..7)if(PixelReveal.tileVisible(row*8+column,pixels.value))tiles.addRect(Rect(rect.left+rect.width*column/8,rect.top+rect.height*row/8,rect.left+rect.width*(column+1)/8,rect.top+rect.height*(row+1)/8))
                                     clipPath(tiles) {drawImage(source,dstOffset=IntOffset(rect.left.roundToInt(),rect.top.roundToInt()),dstSize=IntSize(diameter.roundToInt(),diameter.roundToInt()),filterQuality=FilterQuality.None)}
-                                }
-                            } else if(!signedIn&&atlases.isNotEmpty()) {
-                                val sample=IdentityPlayback.sample(playback.value)
-                                if(sample.mix==0f)drawIdentityFrame(atlases,sample.first,rect,avatarTint)
-                                else {
-                                    // Add premultiplied masks in an isolated layer, so blending does not dim the icon.
-                                    drawContext.canvas.saveLayer(rect,framePaint)
-                                    try {
-                                        drawIdentityFrame(atlases,sample.first,rect,avatarTint,1f-sample.mix)
-                                        drawIdentityFrame(atlases,sample.second,rect,avatarTint,sample.mix,BlendMode.Plus)
-                                    } finally {drawContext.canvas.restore()}
                                 }
                             } else anchor.image?.let {drawImage(it,dstOffset=IntOffset(rect.left.roundToInt(),rect.top.roundToInt()),dstSize=IntSize(diameter.roundToInt(),diameter.roundToInt()),filterQuality=FilterQuality.High)}
                         }

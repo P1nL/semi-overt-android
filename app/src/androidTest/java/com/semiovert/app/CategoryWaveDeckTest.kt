@@ -136,6 +136,34 @@ class CategoryWaveDeckTest {
         app.waitForIdle();rest(1)
     }
 
+    @Test fun downwardDragContinuesAfterTheFocusedCardChangesAtHalfway() {
+        enter()
+        val density=app.activity.resources.displayMetrics.density
+        val root=app.onNodeWithTag("category-wave").fetchSemanticsNode().boundsInRoot
+        val g=WaveDeckMath.embeddedGeometry(root.width/density,root.height/density,3,root.height/density,
+            WaveDeckMath.restingFrontTop(root.width/density,root.height/density,root.height/density))
+        val start=Offset(root.width*.5f,bounds("forest").top-root.top+8f*density)
+        val deck=app.onNodeWithTag("category-wave",useUnmergedTree=true)
+        app.mainClock.autoAdvance=false
+        try {
+            deck.performTouchInput {down(start);moveTo(start+Offset(0f,g.scrollStep*density*.48f/WaveDeckMath.DOWNWARD_GAIN),400)}
+            app.mainClock.advanceTimeBy(48)
+            app.onNodeWithTag("feed-category").assert(SemanticsMatcher("a live deck drag") {it.config[SemanticsProperties.StateDescription].endsWith("滑动中")})
+            val before=app.onNodeWithTag("wave-card-forest",useUnmergedTree=true).getUnclippedBoundsInRoot().top.value
+            deck.performTouchInput {moveTo(start+Offset(0f,g.scrollStep*density*.62f/WaveDeckMath.DOWNWARD_GAIN),160)}
+            app.mainClock.advanceTimeBy(48)
+            val after=app.onNodeWithTag("wave-card-forest",useUnmergedTree=true).getUnclippedBoundsInRoot().top.value
+            assertTrue("The first card must keep following after focus changes: $before -> $after",after>before+20f)
+            deck.performTouchInput {moveTo(start+Offset(0f,g.scrollStep*density*.68f/WaveDeckMath.DOWNWARD_GAIN),160)}
+            app.mainClock.advanceTimeBy(48)
+            assertTrue(app.onNodeWithTag("wave-card-forest",useUnmergedTree=true).getUnclippedBoundsInRoot().top.value>after+20f)
+        }finally {
+            app.onRoot().performTouchInput {up()}
+            app.mainClock.autoAdvance=true
+        }
+        app.waitForIdle();rest(1)
+    }
+
     @Test fun tinyAndHorizontalGesturesDoNotChangeOrOpenTheFrontCard() {
         enter()
         app.onNodeWithTag("category-wave").performTouchInput {

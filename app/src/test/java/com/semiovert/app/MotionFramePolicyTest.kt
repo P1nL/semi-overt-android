@@ -14,17 +14,24 @@ class MotionFramePolicyTest {
         assertEquals(0f,MotionFramePolicy.legacyRefreshRate(emptyList()),0f)
     }
 
-    @Test fun spriteInterpolationKeepsItsDurationAndBlendsAcrossAtlasBoundaries() {
-        assertEquals(1500,IdentityPlayback.DURATION_MILLIS)
-        assertEquals(IdentityFrameBlend(0,1,0f),IdentityPlayback.sample(0f))
-        assertEquals(IdentityFrameBlend(29,30,.5f),IdentityPlayback.sample(29.5f))
-        assertEquals(IdentityFrameBlend(59,60,.5f),IdentityPlayback.sample(59.5f))
-        assertEquals(IdentityFrameBlend(89,89,0f),IdentityPlayback.sample(90f))
-        for(frame in 0..180) {
-            val sample=IdentityPlayback.sample(IdentityPlayback.FRAME_COUNT*frame/180f)
-            assertTrue(sample.first in 0..89&&sample.second in sample.first..89)
-            assertTrue(sample.mix in 0f..1f)
+    @Test fun guestHeadKeepsTheSuppliedBounceKeyframes() {
+        assertEquals(600,GuestIdentityMotion.BOUNCE_MILLIS)
+        for(p in listOf(0f,1f)) {
+            assertEquals(0f,GuestIdentityMotion.headOffset(p),.0001f)
         }
-        assertEquals(.5f,IdentityPlayback.sample(.5f).mix,0f)
+        assertEquals(4f,GuestIdentityMotion.headOffset(.33f),.0001f)
+        assertEquals(-2f,GuestIdentityMotion.headOffset(.66f),.0001f)
+        assertEquals(2f,GuestIdentityMotion.headOffset(.165f),.001f)
+    }
+
+    @Test fun guestRisesFromBelowTheCircleBeforeBouncingAtItsRestingPosition() {
+        assertEquals(560,GuestIdentityMotion.RISE_MILLIS)
+        assertEquals(1f,GuestIdentityMotion.riseOffset(0f),0f)
+        assertEquals(.5f,GuestIdentityMotion.riseOffset(.5f),0f)
+        assertEquals(0f,GuestIdentityMotion.riseOffset(1f),0f)
+        for(frame in 0..120) {
+            val p=frame/120f
+            assertTrue(GuestIdentityMotion.headOffset(p) in -2f..4f)
+        }
     }
 }

@@ -1,5 +1,8 @@
 package com.semiovert.app.feature.settings
 
+import android.graphics.Bitmap
+import android.os.Build
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
@@ -9,6 +12,11 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.*
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.*
 import androidx.compose.ui.semantics.*
@@ -17,6 +25,11 @@ import com.semiovert.app.core.data.PreviewViewModel
 import com.semiovert.app.core.designsystem.*
 import com.semiovert.app.core.model.*
 import com.semiovert.app.navigation.ScreenRoutes
+import com.semiovert.app.navigation.Destination
+import com.semiovert.app.navigation.circleColors
+import com.semiovert.app.feature.home.LocalHomeSnapshot
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
 @Composable
@@ -25,8 +38,16 @@ fun SettingsScreen(state: PreviewState,model: PreviewViewModel,onBack: ()->Unit,
     PageFrame("设置",onBack,"settings-screen") {
         DemoNotice("离线页面与本机偏好；账号和真实文章保存尚未接入。")
         Text("外观",style=MaterialTheme.typography.titleMedium)
-        Row(Modifier.padding(top=12.dp,bottom=20.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-            ThemeMode.entries.forEach {mode ->FilterChip(selected=state.theme==mode,onClick={model.theme(mode)},label={Text(mode.label)})}
+        val dark=MaterialTheme.colorScheme.background.luminance()<.5f
+        Row(Modifier.fillMaxWidth().heightIn(min=80.dp),verticalAlignment=Alignment.CenterVertically) {
+            Column(Modifier.weight(1f).padding(end=16.dp)) {
+                Text("跟随系统",style=MaterialTheme.typography.bodyMedium)
+                Text(if(state.theme==ThemeMode.SYSTEM)"随系统自动切换浅色和深色" else "在首页头像下方切换主题",
+                    style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Switch(checked=state.theme==ThemeMode.SYSTEM,
+                onCheckedChange={model.theme(if(it)ThemeMode.SYSTEM else if(dark)ThemeMode.DARK else ThemeMode.LIGHT)},
+                modifier=Modifier.testTag("follow-system-theme").semantics {contentDescription="主题跟随系统"})
         }
         SettingRow("调整导航位置","在底部安全区域移动主圆") {onRoute(ScreenRoutes.NAV_POSITION)}
         HorizontalDivider(color=MaterialTheme.colorScheme.outlineVariant)
@@ -34,7 +55,7 @@ fun SettingsScreen(state: PreviewState,model: PreviewViewModel,onBack: ()->Unit,
             Column(Modifier.weight(1f)) {Text("本地修改记录",style=MaterialTheme.typography.bodyMedium);Text(if(state.signedIn)"仅预览内置快照，不采集真实修改" else "进入演示身份后可体验",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
             Switch(checked=state.snapshots,onCheckedChange={if(it)confirmation="enable" else model.snapshots(false)},enabled=state.signedIn,modifier=Modifier.semantics {contentDescription="本地修改记录开关"})
         }
-        SettingRow("查看记录","月历、日期详情与版本示例") {onRoute(if(state.signedIn)ScreenRoutes.RECORDS else ScreenRoutes.LOGIN)}
+        SettingRow("查看记录","月历、日期详情与版本示例") {onRoute(if(state.signedIn)ScreenRoutes.RECORDS else Destination.PROFILE.route)}
         SettingRow("清除本地记录","只清除本机演示快照，不影响汇总") {confirmation="clear"}
         if(state.snapshotsCleared)TextButton(onClick=model::restoreExamples) {Text("恢复内置示例快照")}
         HorizontalDivider(Modifier.padding(vertical=16.dp),color=MaterialTheme.colorScheme.outlineVariant)
@@ -42,7 +63,7 @@ fun SettingsScreen(state: PreviewState,model: PreviewViewModel,onBack: ()->Unit,
         SettingRow("重置密码","离线表单流程，不会修改真实密码") {onRoute(ScreenRoutes.FORGOT)}
         SettingRow("页面状态预览","加载、空、错误与恢复") {onRoute(ScreenRoutes.STATES)}
         if(state.signedIn)OutlinedButton(onClick={confirmation="logout"},modifier=Modifier.fillMaxWidth().padding(top=20.dp).heightIn(min=52.dp)) {Text("退出演示身份")}
-        else Button(onClick={onRoute(ScreenRoutes.LOGIN)},modifier=Modifier.fillMaxWidth().padding(top=20.dp).heightIn(min=52.dp)) {Text("进入登录页")}
+        else Button(onClick={onRoute(Destination.PROFILE.route)},modifier=Modifier.fillMaxWidth().padding(top=20.dp).heightIn(min=52.dp)) {Text("进入登录页")}
         Spacer(Modifier.height(32.dp))
     }
     when(confirmation) {
@@ -57,25 +78,56 @@ fun NavigationPositionScreen(initial: NavigationPlacement,onBack: ()->Unit,onSav
     var x by rememberSaveable {mutableFloatStateOf(initial.x)}
     var y by rememberSaveable {mutableFloatStateOf(initial.y)}
     val density=LocalDensity.current
-    PageFrame("调整导航位置",onBack,"navigation-position-screen") {
-        Text("让主圆靠近顺手的位置",style=MaterialTheme.typography.headlineSmall,modifier=Modifier.padding(top=24.dp))
-        DemoNotice("拖动下方的主圆，或使用位置按钮。保存后应用到各一级页面。")
-        BoxWithConstraints(Modifier.fillMaxWidth().height(216.dp).clip(RoundedCornerShape(24.dp)).background(MaterialTheme.colorScheme.surfaceVariant).padding(16.dp)) {
-            val maxX=with(density){(maxWidth-56.dp).toPx()}.coerceAtLeast(1f)
-            val maxY=with(density){(maxHeight-56.dp).toPx()}.coerceAtLeast(1f)
-            Text("底部安全区域",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.align(Alignment.Center))
-            Surface(shape=CircleShape,color=MaterialTheme.colorScheme.primaryContainer,modifier=Modifier.offset {IntOffset((x*maxX).roundToInt(),((1-y)*maxY).roundToInt())}.size(56.dp).testTag("position-preview")
-                .pointerInput(maxX,maxY) {detectDragGestures {change,amount ->change.consume();x=(x+amount.x/maxX).coerceIn(0f,1f);y=(y-amount.y/maxY).coerceIn(0f,1f)}}) {
-                Box(contentAlignment=Alignment.Center) {SoIcon(SoSymbol.HOME,tint=MaterialTheme.colorScheme.onPrimaryContainer)}
-            }
+    val snapshot=LocalHomeSnapshot.current?.image
+    var softened by remember(snapshot) {mutableStateOf<ImageBitmap?>(null)}
+    LaunchedEffect(snapshot) {
+        if(snapshot!=null&&Build.VERSION.SDK_INT<31)softened=withContext(Dispatchers.Default) {
+            // Downsample only the non-interactive snapshot; this also works before Android 12.
+            val small=Bitmap.createScaledBitmap(snapshot.asAndroidBitmap(),(snapshot.width/24).coerceAtLeast(1),
+                (snapshot.height/24).coerceAtLeast(1),true)
+            val result=Bitmap.createScaledBitmap(small,snapshot.width,snapshot.height,true).asImageBitmap()
+            small.recycle();result
         }
-        Row(Modifier.fillMaxWidth().padding(top=16.dp),horizontalArrangement=Arrangement.SpaceBetween) {
-            TextButton(onClick={x=0f;y=0f}) {Text("左下")}
-            TextButton(onClick={x=.5f;y=0f}) {Text("居中")}
-            TextButton(onClick={x=1f;y=0f}) {Text("右下")}
+    }
+    BackHandler(onBack=onBack)
+    BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).testTag("navigation-position-screen")) {
+        snapshot?.let {Image(it,null,Modifier.fillMaxSize().testTag("position-home-snapshot"),contentScale=ContentScale.FillBounds)}
+        val bottomInset=WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+        val panelHeight=320.dp+bottomInset
+        val nativeBlur=Build.VERSION.SDK_INT>=31
+        (if(nativeBlur)snapshot else softened)?.let {image->
+            Box(Modifier.fillMaxSize().drawWithContent {
+                clipRect(top=(size.height-panelHeight.toPx()).coerceAtLeast(0f)){this@drawWithContent.drawContent()}
+            }) {Image(image,null,Modifier.fillMaxSize().then(if(nativeBlur)Modifier.blur(18.dp) else Modifier),contentScale=ContentScale.FillBounds)}
         }
-        Button(onClick={onSave(NavigationPlacement(x,y))},modifier=Modifier.fillMaxWidth().padding(top=24.dp).heightIn(min=52.dp)) {Text("保存位置")}
-        TextButton(onClick={x=1f;y=0f},modifier=Modifier.fillMaxWidth()) {Text("重置为右下角")}
-        TextButton(onClick=onBack,modifier=Modifier.fillMaxWidth()) {Text("取消")}
+        val background=MaterialTheme.colorScheme.background
+        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(panelHeight)
+            .background(Brush.verticalGradient(listOf(background.copy(alpha=.2f),background.copy(alpha=.82f))))
+            .padding(horizontal=24.dp,vertical=16.dp)) {
+            Text("调整导航位置",style=MaterialTheme.typography.titleLarge)
+            Text("拖动主圆，放到顺手的位置",style=MaterialTheme.typography.bodyMedium,
+                color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.padding(top=4.dp,bottom=12.dp))
+            Button(onClick={onSave(NavigationPlacement(x,y))},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) {Text("保存位置")}
+        }
+        val travelX=with(density){(maxWidth-96.dp).coerceAtLeast(0.dp).toPx()}
+        val travelY=with(density){140.dp.toPx()}
+        val circle=Destination.HOME.circleColors
+        Surface(shape=CircleShape,color=circle.background,contentColor=circle.foreground,shadowElevation=6.dp,
+            modifier=Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end=20.dp,bottom=18.dp)
+                .offset(x=-(maxWidth-96.dp).coerceAtLeast(0.dp)*(1f-x),y=-140.dp*y).size(56.dp)
+                .testTag("position-preview").semantics {
+                    contentDescription="拖动调整主圆位置"
+                    stateDescription="横向 ${(x*100).roundToInt()}%，高度 ${(y*100).roundToInt()}%"
+                    customActions=listOf(
+                        CustomAccessibilityAction("向左移动") {x=(x-.1f).coerceAtLeast(0f);true},
+                        CustomAccessibilityAction("向右移动") {x=(x+.1f).coerceAtMost(1f);true},
+                        CustomAccessibilityAction("向上移动") {y=(y+.1f).coerceAtMost(1f);true},
+                        CustomAccessibilityAction("向下移动") {y=(y-.1f).coerceAtLeast(0f);true})
+                }.pointerInput(travelX,travelY) {
+                    detectDragGestures {change,amount ->
+                        change.consume();x=(x+amount.x/travelX.coerceAtLeast(1f)).coerceIn(0f,1f)
+                        y=(y-amount.y/travelY).coerceIn(0f,1f)
+                    }
+                }) {Box(contentAlignment=Alignment.Center) {SoIcon(SoSymbol.HOME,tint=circle.foreground)}}
     }
 }

@@ -3,6 +3,7 @@ package com.semiovert.app
 import android.content.Context
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.espresso.Espresso
@@ -23,46 +24,70 @@ class PageCompletionTest {
     }
     private fun enterDemo() {
         navigate("我的")
-        app.onNodeWithText("登录",useUnmergedTree=true).performClick()
         app.onNodeWithText("填入示例资料").performScrollTo().performClick()
         app.onNodeWithTag("account-submit").performScrollTo().performClick()
         app.onNodeWithTag("profile-identity").assertIsDisplayed()
     }
     private fun settings() {app.onNodeWithContentDescription("设置").performClick()}
 
-    @Test fun loginSlidesRightForCancelAndDownToItsCallerAfterSuccess() {
-        navigate("我的");settings();app.waitForIdle()
-        val entry=app.onNodeWithText("进入登录页").performScrollTo()
-        app.mainClock.autoAdvance=false
-        try {
-            entry.performClick();app.mainClock.advanceTimeBy(100)
-            assertTrue(app.onNodeWithTag("login-screen").getUnclippedBoundsInRoot().left.value>0f)
-        }finally{app.mainClock.autoAdvance=true;app.waitForIdle()}
-        val resting=app.onNodeWithTag("login-screen").getUnclippedBoundsInRoot()
-        app.mainClock.autoAdvance=false
-        try {
-            Espresso.pressBack();app.mainClock.advanceTimeBy(100)
-            val leaving=app.onNodeWithTag("login-screen").getUnclippedBoundsInRoot()
-            assertTrue(leaving.left>resting.left)
-            assertEquals(resting.top.value,leaving.top.value,.1f)
-        }finally{app.mainClock.autoAdvance=true;app.waitForIdle()}
-        app.onNodeWithTag("settings-screen").assertIsDisplayed()
-        app.onNodeWithText("进入登录页").performScrollTo().performClick()
+    @Test fun inlineLoginSlidesDownOverTheSettledProfile() {
+        navigate("我的")
         app.onNodeWithText("填入示例资料").performScrollTo().performClick()
-        val submit=app.onNodeWithTag("account-submit").performScrollTo()
+        app.onNodeWithTag("account-submit").performScrollTo()
+        val before=app.onNodeWithTag("profile-guest").getUnclippedBoundsInRoot()
         app.mainClock.autoAdvance=false
         try {
-            submit.performClick();app.mainClock.advanceTimeBy(250)
-            val leaving=app.onNodeWithTag("login-screen").getUnclippedBoundsInRoot()
-            assertEquals(resting.left.value,leaving.left.value,.1f)
-            assertTrue("Successful login must slide down, not disappear",leaving.top.value>resting.top.value+40f)
-            assertEquals(0f,app.onNodeWithTag("settings-screen").getUnclippedBoundsInRoot().left.value,.1f)
-        }finally{app.mainClock.autoAdvance=true;app.waitForIdle()}
-        app.onNodeWithTag("settings-screen").assertIsDisplayed()
-        app.onNodeWithTag("login-screen").assertDoesNotExist()
-        app.onNodeWithText("退出演示身份").assertExists()
-        back()
+            app.onNodeWithTag("account-submit").performClick()
+            app.mainClock.advanceTimeBy(240)
+            val leaving=app.onNodeWithTag("profile-guest").getUnclippedBoundsInRoot()
+            val identity=app.onNodeWithTag("profile-identity").getUnclippedBoundsInRoot()
+            assertTrue("Login content exits downward",leaving.top.value>before.top.value+1f)
+            assertEquals("Login does not exit horizontally",before.left.value,leaving.left.value,.5f)
+            app.mainClock.advanceTimeBy(800)
+            app.onNodeWithTag("profile-guest").assertDoesNotExist()
+            val settled=app.onNodeWithTag("profile-identity").getUnclippedBoundsInRoot()
+            assertEquals("Profile is already at rest behind login",settled.left.value,identity.left.value,.5f)
+            assertEquals(settled.top.value,identity.top.value,.5f)
+        } finally {app.mainClock.autoAdvance=true;app.waitForIdle()}
+    }
+
+    @Test fun passwordEyeTogglesVisibilityWithoutChangingTheValue() {
+        navigate("我的")
+        val field=app.onNodeWithTag("account-password")
+        val eye=app.onNodeWithTag("account-password-visibility")
+        fun renderedPassword(): String {
+            val layouts=mutableListOf<TextLayoutResult>()
+            field.performSemanticsAction(SemanticsActions.GetTextLayoutResult){it(layouts)}
+            return layouts.single().layoutInput.text.text
+        }
+        field.performTextInput("demo-eye-123")
+        Espresso.closeSoftKeyboard()
+        eye.performScrollTo().assertContentDescriptionEquals("显示密码").assertIsOff()
+        val hidden=renderedPassword()
+        assertEquals("demo-eye-123".length,hidden.length)
+        assertTrue(hidden.all {it=='\u2022'})
+        eye.performClick().assertContentDescriptionEquals("隐藏密码").assertIsOn()
+        assertEquals("demo-eye-123",renderedPassword())
+        eye.performClick().assertContentDescriptionEquals("显示密码").assertIsOff()
+        assertEquals(hidden,renderedPassword())
+    }
+
+    @Test fun guestOwnsLoginAndSettingsReturnsToThatSameProfile() {
+        navigate("我的")
+        app.onNodeWithTag("profile-guest").assertIsDisplayed()
+        app.onNodeWithTag("login-screen").assertExists()
+        app.onNodeWithText("尚未登录").assertDoesNotExist()
+        app.onNodeWithContentDescription("返回").assertDoesNotExist()
+        settings()
+        app.onNodeWithText("进入登录页").performScrollTo().performClick()
+        app.onNodeWithTag("settings-screen").assertDoesNotExist()
+        app.onNodeWithTag("profile-guest").assertIsDisplayed()
+        app.onNodeWithText("填入示例资料").performScrollTo().performClick()
+        app.onNodeWithTag("account-submit").performScrollTo().performClick()
         app.onNodeWithTag("profile-identity").assertIsDisplayed()
+        app.onNodeWithTag("login-screen").assertDoesNotExist()
+        val saved=app.activity.getSharedPreferences("offline_preview",Context.MODE_PRIVATE)
+        assertFalse(saved.all.keys.any {it.contains("password")||it.contains("email")||it.contains("token")})
     }
 
     @Test fun registrationProfileEditingAndCoverAreConnected() {
@@ -87,24 +112,25 @@ class PageCompletionTest {
 
     @Test fun recoveryValidatesCodeAndEndsAtExplicitDemoResult() {
         navigate("我的")
-        app.onNodeWithText("登录",useUnmergedTree=true).performClick()
         app.onNodeWithText("忘记密码").performScrollTo().performClick()
         app.onNodeWithTag("recovery-email").performTextInput("reader@example.invalid")
         Espresso.closeSoftKeyboard()
         app.onNodeWithText("获取演示验证码").performScrollTo().performClick()
         app.onNodeWithTag("recovery-code").performTextInput("000000")
         Espresso.closeSoftKeyboard()
-        app.onNodeWithText("下一步").performScrollTo().performClick()
-        app.onNodeWithText("请输入上方的演示验证码").assertExists()
-        app.onNodeWithTag("recovery-code").performTextReplacement("123456")
-        Espresso.closeSoftKeyboard()
-        app.onNodeWithText("下一步").performScrollTo().performClick()
         app.onNodeWithTag("reset-password").performTextInput("demo-reset-123")
         app.onNodeWithTag("reset-confirmation").performTextInput("demo-reset-123")
         Espresso.closeSoftKeyboard()
         app.onNodeWithText("完成演示重置").performScrollTo().performClick()
-        app.onNodeWithText("演示流程已完成").assertIsDisplayed()
-        app.onNodeWithText("返回登录").performClick()
+        app.onNodeWithText("请输入上方的演示验证码").assertExists()
+        app.onNodeWithTag("recovery-code").performTextReplacement("123456")
+        Espresso.closeSoftKeyboard()
+        Espresso.closeSoftKeyboard()
+        app.onNodeWithText("完成演示重置").performScrollTo().performClick()
+        app.onNodeWithTag("forgot-screen").assertIsDisplayed()
+        app.onNodeWithTag("reset-screen").assertDoesNotExist()
+        app.onNodeWithText("演示重置已完成").assertIsDisplayed()
+        app.onNodeWithText("返回个人页").performClick()
         app.onNodeWithTag("login-screen").assertIsDisplayed()
     }
 
@@ -143,7 +169,11 @@ class PageCompletionTest {
         app.onNodeWithTag("author-screen").assertIsDisplayed()
         app.onNodeWithContentDescription("设置").assertDoesNotExist()
         app.onNodeWithTag("profile-identity").assertDoesNotExist()
-        app.onNodeWithTag("article-street").performScrollTo().performClick()
+        app.onNodeWithTag("main-circle").assertIsDisplayed()
+        app.onNodeWithText("作者主页").assertDoesNotExist()
+        app.onNodeWithTag("author-profile-feed").performScrollToNode(hasTestTag("author-articles"))
+        app.onNodeWithTag("author-wave").assertIsDisplayed()
+        app.onNodeWithTag("article-street").performClick()
         app.onNodeWithTag("reader-screen").assertIsDisplayed()
         back();back()
         app.onNodeWithTag("search-input").assertTextContains("街角")
@@ -153,8 +183,10 @@ class PageCompletionTest {
     @Test fun savedLeftPlacementAlsoMirrorsTheRadialMenu() {
         navigate("我的");settings()
         app.onNodeWithText("调整导航位置").performScrollTo().performClick()
-        app.onNodeWithText("左下").performClick()
-        app.onNodeWithText("保存位置").performScrollTo().performClick()
+        app.onNodeWithTag("position-preview").performTouchInput {
+            down(center);moveBy(Offset(-1000f,0f),delayMillis=400);up()
+        }
+        app.onNodeWithText("保存位置").performClick()
         back()
         assertTrue(app.onNodeWithTag("main-circle").getUnclippedBoundsInRoot().left.value<60f)
         val density=app.activity.resources.displayMetrics.density

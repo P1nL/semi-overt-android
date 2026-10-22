@@ -1,5 +1,6 @@
 package com.semiovert.app.feature.profile
 
+import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -22,15 +23,17 @@ import com.semiovert.app.core.designsystem.wave.WaveArticleDeck
 import com.semiovert.app.core.designsystem.wave.WaveDeckMath
 import com.semiovert.app.core.model.*
 import com.semiovert.app.feature.records.RecordCalendar
+import com.semiovert.app.feature.account.AccountForm
 import com.semiovert.app.navigation.*
 
 @Composable
-fun ProfileScreen(state: PreviewState,onTheme: ()->Unit,onNavigate: (Destination)->Unit,onRoute: (String)->Unit,onArticle: (String)->Unit,
+fun ProfileScreen(state: PreviewState,onNavigate: (Destination)->Unit,onRoute: (String)->Unit,onArticle: (String)->Unit,onEnterDemo: (String?)->Unit,
     entryKey: Int=0,onEntryReady: ()->Unit={}) {
     // Navigation holds progress at zero until this restored/new page has entered a frame.
     LaunchedEffect(entryKey) {withFrameNanos {};onEntryReady()}
     val motion=LocalMotionEnabled.current
-    var played by rememberSaveable(state.signedIn){mutableStateOf(!state.signedIn)}
+    // Inline authentication reveals the already-settled feed, not a second page entrance.
+    var played by rememberSaveable {mutableStateOf(!state.signedIn)}
     val local=remember(state.signedIn){Animatable(if(played||!motion)1f else 0f)}
     LaunchedEffect(state.signedIn,motion){if(state.signedIn&&!played){local.animateTo(1f,tween(if(motion)SceneMotion.PROFILE_ENTER_MS else 0,easing=LinearEasing));played=true}}
     val progress=if(motion)minOf(local.value,LocalProfileEntryProgress.current) else 1f
@@ -43,22 +46,22 @@ fun ProfileScreen(state: PreviewState,onTheme: ()->Unit,onNavigate: (Destination
                 IconButton(onClick={onRoute(ScreenRoutes.SETTINGS)},modifier=Modifier.semantics {contentDescription="设置"}){SoIcon(SoSymbol.SETTINGS)}
             }
         }) {
-            if(!state.signedIn)Column(Modifier.fillMaxSize().testTag("profile-guest")
-                .graphicsLayer {translationX=size.width*(1f-SoSceneEase.transform(SceneMotion.profileSegment(progress,0f,1000f)))}.verticalScroll(rememberScrollState())
-                .padding(start=24.dp,end=24.dp,top=top+112.dp,bottom=128.dp),horizontalAlignment=Alignment.CenterHorizontally) {
+            AnimatedContent(state.signedIn,modifier=Modifier.fillMaxSize(),label="profile-account",transitionSpec={
+                ContentTransform(EnterTransition.None,
+                    if(targetState)slideOutVertically(tween(if(motion)ACCOUNT_SUCCESS_EXIT_MS else 0,easing=SoSceneEase)){it} else ExitTransition.None,
+                    targetContentZIndex=if(targetState)-1f else 0f,sizeTransform=null)
+            }) {signedIn ->
+            if(!signedIn)Surface(Modifier.fillMaxSize()
+                .graphicsLayer {translationX=size.width*(1f-SoSceneEase.transform(progress))}.testTag("profile-guest"),color=MaterialTheme.colorScheme.background) {
+            Column(Modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState())
+                .padding(start=24.dp,end=24.dp,top=top+96.dp,bottom=128.dp),horizontalAlignment=Alignment.CenterHorizontally) {
                 IdentityAvatar(size=80,registerAnchor=false)
-                Text("尚未登录",style=MaterialTheme.typography.headlineSmall,modifier=Modifier.padding(top=20.dp))
-                Text("先读一篇，再慢慢认识这里。",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.padding(top=8.dp,bottom=24.dp))
-                Button(onClick={onRoute(ScreenRoutes.LOGIN)},modifier=Modifier.fillMaxWidth().heightIn(min=52.dp)){Text("登录")}
-                FilledTonalButton(onClick={onRoute(ScreenRoutes.REGISTER)},modifier=Modifier.fillMaxWidth().padding(top=10.dp).heightIn(min=52.dp)){Text("创建账号")}
-                HorizontalDivider(Modifier.padding(top=38.dp,bottom=12.dp),color=MaterialTheme.colorScheme.outlineVariant)
-                TextButton(onClick=onTheme,modifier=Modifier.fillMaxWidth().heightIn(min=56.dp)) {
-                    SoIcon(SoSymbol.APPEARANCE);Text("外观",Modifier.weight(1f).padding(start=12.dp));Text(state.theme.label)
-                }
-                Text("离线体验",style=MaterialTheme.typography.titleMedium,modifier=Modifier.fillMaxWidth().padding(top=26.dp))
-                Text("文章、作者、账号表单和记录均为本地演示。不会登录真实账号或上传输入。",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.fillMaxWidth().padding(top=8.dp))
+                Spacer(Modifier.height(20.dp))
+                AccountForm(false,{onRoute(ScreenRoutes.REGISTER)},{onRoute(ScreenRoutes.FORGOT)},onEnterDemo)
+            }
             }else ProfileFeed(state.profile,"lin",true,state.snapshots,state.snapshotsCleared,onArticle,
                 {onRoute(ScreenRoutes.EDIT_PROFILE)},progress)
+            }
         }
     }
 }
@@ -76,7 +79,7 @@ private fun ProfileFeed(profile: PreviewProfile,authorId: String,owner: Boolean,
     val density=LocalDensity.current
     val top=WindowInsets.statusBars.asPaddingValues().calculateTopPadding()+80.dp
     val panel=SoSceneEase.transform(SceneMotion.profileSegment(progress,0f,1000f))
-    val cover=SceneMotion.profileSegment(progress,120f,900f)
+    val cover=SceneMotion.profileSegment(progress,120f,620f)
     val coverInk=if(profile.cover!=null)Color.White else MaterialTheme.colorScheme.onSecondaryContainer
     val identity: @Composable ()->Unit = {
             BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal=20.dp).height(281.dp).readingChromeFade()) {
@@ -89,9 +92,9 @@ private fun ProfileFeed(profile: PreviewProfile,authorId: String,owner: Boolean,
                         if(profile.cover!=null)Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent,Color.Black.copy(alpha=.72f)))))
                         Column(Modifier.fillMaxSize().padding(20.dp)) {
                             Spacer(Modifier.size(76.dp))
-                            TypewriterText(profile.name,SceneMotion.profileSegment(progress,220f,820f),MaterialTheme.typography.headlineSmall,Modifier.padding(top=16.dp),coverInk)
-                            TypewriterText("@"+profile.handle,SceneMotion.profileSegment(progress,280f,880f),MaterialTheme.typography.labelMedium,Modifier.padding(top=4.dp),coverInk)
-                            if(profile.bio.isNotBlank())TypewriterText(profile.bio,SceneMotion.profileSegment(progress,340f,940f),MaterialTheme.typography.bodyMedium,Modifier.padding(top=12.dp),coverInk)
+                            TypewriterText(profile.name,SceneMotion.profileSegment(progress,200f,550f),MaterialTheme.typography.headlineSmall,Modifier.padding(top=16.dp),coverInk)
+                            TypewriterText("@"+profile.handle,SceneMotion.profileSegment(progress,240f,600f),MaterialTheme.typography.labelMedium,Modifier.padding(top=4.dp),coverInk)
+                            if(profile.bio.isNotBlank())TypewriterText(profile.bio,SceneMotion.profileSegment(progress,280f,680f),MaterialTheme.typography.bodyMedium,Modifier.padding(top=12.dp),coverInk)
                         }
                     }
                 }
@@ -102,25 +105,25 @@ private fun ProfileFeed(profile: PreviewProfile,authorId: String,owner: Boolean,
             }
     }
     val records: @Composable ()->Unit = {
-        Column(Modifier.padding(horizontal=20.dp).readingChromeFade()){RecordCalendar(authorId,owner,snapshots,cleared,textProgress=SceneMotion.profileSegment(progress,400f,1000f))}
+        Column(Modifier.padding(horizontal=20.dp).readingChromeFade()){RecordCalendar(authorId,owner,snapshots,cleared,textProgress=SceneMotion.profileSegment(progress,300f,650f))}
     }
     val heading: @Composable ()->Unit = {
-        Row(Modifier.fillMaxWidth().padding(horizontal=24.dp).graphicsLayer {alpha=SceneMotion.profileSegment(progress,1000f,1500f)}.readingChromeFade(),verticalAlignment=Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().padding(horizontal=24.dp).graphicsLayer {alpha=SceneMotion.profileSegment(progress,300f,550f)}.readingChromeFade(),verticalAlignment=Alignment.CenterVertically) {
             Text(if(owner)"公开文章（示例）" else "公开文章 · ${articles.size}（示例）",style=MaterialTheme.typography.labelLarge,
                 modifier=Modifier.testTag("profile-articles-heading"))
-            if(owner) {
+            run {
                 val position=if(articles.isEmpty())0 else (if(motion&&density.fontScale<=1.2f)selected else articleList.firstVisibleItemIndex).coerceAtMost(articles.lastIndex)+1
                 Text("$position / ${articles.size}",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier=Modifier.padding(start=16.dp).testTag("profile-position"))
             }
         }
     }
-    if(owner)BoxWithConstraints(Modifier.fillMaxSize()) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
         val referenceHeight=maxHeight
         // Records own their full height. The page stops at the deck's cropped viewport,
         // not at the full card height or its extra off-screen elastic reserve.
-        val deckHeight=WaveDeckMath.profileViewportHeight(maxWidth.value,referenceHeight.value,articles.size).dp
-        LazyColumn(state=list,userScrollEnabled=expansion?.active!=true,modifier=Modifier.fillMaxSize().testTag("my-profile-feed"),
+        val deckHeight=WaveDeckMath.profileViewportHeight(maxWidth.value,referenceHeight.value,articles.size,density.fontScale).dp
+        LazyColumn(state=list,userScrollEnabled=expansion?.active!=true,modifier=Modifier.fillMaxSize().testTag(if(owner)"my-profile-feed" else "author-profile-feed"),
             contentPadding=PaddingValues(top=top),verticalArrangement=Arrangement.spacedBy(16.dp)) {
             item("identity"){identity()}
             item("records"){records()}
@@ -128,40 +131,31 @@ private fun ProfileFeed(profile: PreviewProfile,authorId: String,owner: Boolean,
             item("articles-deck") {
             Box(Modifier.fillMaxWidth().height(deckHeight).clipToBounds()) {
             if(articles.isNotEmpty()) {
-            val hidden=1f-SceneMotion.profileSegment(progress,320f,1500f)
+            val hidden=1f-SceneMotion.profileSegment(progress,100f,1100f)
             CompositionLocalProvider(LocalFlowRoll provides hidden,LocalFlowPhase provides if(hidden>0f)if(exiting)FlowPhase.EXIT else FlowPhase.ENTER else FlowPhase.IDLE) {
                 if(motion&&density.fontScale<=1.2f)WaveArticleDeck(articles,selected,{selected=it},onArticle,
-                    Modifier.fillMaxSize(),listTag="profile-articles",deckTag="profile-wave",frontTop=76.dp,referenceHeight=referenceHeight,
-                    visibleLimit=WaveDeckMath.PROFILE_VISIBLE,showCounter=false,
+                    Modifier.fillMaxSize(),listTag=if(owner)"profile-articles" else "author-articles",deckTag=if(owner)"profile-wave" else "author-wave",frontTop=76.dp,referenceHeight=referenceHeight,
+                    visibleLimit=WaveDeckMath.PROFILE_VISIBLE,showCounter=false,sceneDurationMillis=1000,sceneStaggerMillis=0,
                     consumePageDrag={delta -> -list.dispatchRawDelta(-delta)})
-                else ArticleFeed(articles,articleList,"profile-articles",onArticle,
+                else ArticleFeed(articles,articleList,if(owner)"profile-articles" else "author-articles",onArticle,
                     modifier=Modifier.fillMaxSize(),categoryCards=true)
             }
             }else Text("暂时没有公开文章",Modifier.padding(24.dp),style=MaterialTheme.typography.bodyMedium)
             }
             }
         }
-    }else LazyColumn(state=list,userScrollEnabled=expansion?.active!=true,modifier=Modifier.fillMaxSize().testTag("author-profile-feed"),
-        contentPadding=PaddingValues(top=top,bottom=128.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
-        item("identity"){identity()}
-        item("records"){records()}
-        item("articles-heading"){heading()}
-        itemsIndexed(articles,key={_,it->it.id}) {index,article->CoverArticleCard(article,true,Modifier.padding(horizontal=20.dp).fillMaxWidth().aspectRatio(.8f).testTag("article-"+article.id),
-            "wave-cover-"+article.id,topAligned=true,squareBottom=true,shortBottomBlur=true,onClick={onArticle(article.id)},exitRank=index)}
-        if(articles.isEmpty())item("empty-articles"){Text("暂时没有公开文章",Modifier.padding(24.dp),style=MaterialTheme.typography.bodyMedium)}
     }
 }
 
 @Composable
-fun AuthorScreen(authorId: String,onBack: ()->Unit,onArticle: (String)->Unit) {
+fun AuthorScreen(authorId: String,onBack: ()->Unit,onArticle: (String)->Unit,onNavigate: (Destination)->Unit) {
     val author=SampleLibrary.authors.find {it.id==authorId}
     if(author==null){PageFrame("作者主页",onBack,"author-missing-screen"){Text("没有找到这位示例作者")};return}
     val cover=if(author.id=="zhou")Cover.ARCHITECTURE else null
     Box(Modifier.fillMaxSize().testTag("author-screen")) {
-        ProfileFeed(PreviewProfile(author.name,"sample_"+author.id,author.bio,cover=cover),author.id,false,false,false,onArticle)
-        Row(Modifier.fillMaxWidth().statusBarsPadding().heightIn(min=64.dp).padding(horizontal=12.dp).readingChromeFade(),verticalAlignment=Alignment.CenterVertically) {
-            IconButton(onClick=onBack){SoIcon(SoSymbol.ARROW,"返回",Modifier.graphicsLayer {rotationZ=180f})}
-            Text("作者主页",style=MaterialTheme.typography.labelLarge)
+        BrowseScene(Destination.PROFILE,"",onNavigate,showHeader=false) {
+            ProfileFeed(PreviewProfile(author.name,"sample_"+author.id,author.bio,cover=cover),author.id,false,false,false,onArticle,
+                progress=LocalProfileEntryProgress.current)
         }
     }
 }

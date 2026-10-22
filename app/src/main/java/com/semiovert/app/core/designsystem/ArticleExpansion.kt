@@ -93,6 +93,10 @@ fun LayoutCoordinates.articleBoundsInRoot()=Rect(localToRoot(Offset.Zero),Size(s
             source=origin;sourceMeasured=true
         }
     }
+    /** A reader popped by its author link no longer owns a reverse card transition. */
+    fun forgetLastOrigin(id: String) {
+        if(origins.lastOrNull()?.first?.article?.id==id)origins.removeAt(origins.lastIndex)
+    }
     fun forgetOrigins() {origins.clear()}
 }
 val LocalArticleExpansion=staticCompositionLocalOf<ArticleExpansionState?> {null}

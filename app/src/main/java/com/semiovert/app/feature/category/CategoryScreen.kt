@@ -47,7 +47,7 @@ fun CategoryScreen(onNavigate: (Destination)->Unit,onArticle: (String)->Unit,mod
             var selected by rememberSaveable {mutableIntStateOf(0)}
             BoxWithConstraints {
                 if(motion&&LocalDensity.current.fontScale<=1.2f&&maxHeight>=440.dp&&maxHeight>maxWidth&&articles.isNotEmpty()) {
-                    WaveArticleDeck(articles,selected,{selected=it},onArticle,visibleLimit=WaveDeckMath.CATEGORY_VISIBLE,
+                    WaveArticleDeck(articles,selected,{selected=it},onArticle,visibleLimit=WaveDeckMath.CATEGORY_VISIBLE,elasticEntrance=true,
                         frontTop=WaveDeckMath.restingFrontTop(maxWidth.value,maxHeight.value,maxHeight.value).dp)
                 } else {
                     CompositionLocalProvider(LocalMotionEnabled provides false) {

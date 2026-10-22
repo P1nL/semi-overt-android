@@ -19,12 +19,16 @@ import androidx.lifecycle.Lifecycle
 import com.semiovert.app.core.data.PreviewViewModel
 import com.semiovert.app.core.data.SampleLibrary
 import com.semiovert.app.core.model.PreviewState
+import com.semiovert.app.core.model.ThemeMode
 import com.semiovert.app.core.designsystem.*
 import com.semiovert.app.core.designsystem.wave.WaveDeckOverlayHost
 import com.semiovert.app.core.designsystem.wave.DeckCounterHost
 import com.semiovert.app.core.designsystem.wave.readerPageOverlay
+import com.semiovert.app.core.designsystem.wave.secondaryPageOverlay
 import kotlinx.coroutines.flow.first
 import com.semiovert.app.feature.home.HomeScreen
+import com.semiovert.app.feature.home.HomeSnapshotState
+import com.semiovert.app.feature.home.LocalHomeSnapshot
 import com.semiovert.app.feature.category.CategoryScreen
 import com.semiovert.app.feature.search.SearchScreen
 import com.semiovert.app.feature.reader.ReaderScreen
@@ -42,8 +46,14 @@ private fun RouteSurface(edgeToEdge: Boolean=false,modifier: Modifier=Modifier,c
     }
 }
 
-private fun NavGraphBuilder.secondary(route: String,arguments: List<NamedNavArgument> = emptyList(),edgeToEdge: Boolean=false,content: @Composable (NavBackStackEntry)->Unit) {
-    composable(route,arguments=arguments) {entry ->RouteSurface(edgeToEdge) {content(entry)}}
+private const val SECONDARY_DEPTH_KEY="secondary-overlay-depth"
+
+private fun NavGraphBuilder.secondary(route: String,onBack: ()->Unit,canGoBack: ()->Boolean,
+    arguments: List<NamedNavArgument> = emptyList(),edgeToEdge: Boolean=false,content: @Composable (NavBackStackEntry)->Unit) {
+    composable(route,arguments=arguments) {entry ->RouteSurface(edgeToEdge,
+        Modifier.secondaryPageOverlay(entry.savedStateHandle.get<Float>(SECONDARY_DEPTH_KEY)?:3f)) {
+        SwipeBackPage(canGoBack(),onBack) {content(entry)}
+    }}
 }
 
 @Composable
@@ -52,6 +62,8 @@ fun AppNavigation(state: PreviewState,model: PreviewViewModel,onStatusBarAppeara
     val focus=LocalFocusManager.current
     val keyboard=LocalSoftwareKeyboardController.current
     val motion=LocalMotionEnabled.current
+    val homeSnapshot=remember {HomeSnapshotState()}
+    val dark=MaterialTheme.colorScheme.background.luminance()<.5f
     var homeEntry by rememberSaveable {mutableIntStateOf(0)}
     var profileEntry by remember {mutableIntStateOf(0)}
     var handoff by remember {mutableStateOf<PageHandoff?>(null)}
@@ -69,50 +81,76 @@ fun AppNavigation(state: PreviewState,model: PreviewViewModel,onStatusBarAppeara
         if(controller.currentDestination?.route!=target.route&&!navigating) {
             focus.clearFocus();keyboard?.hide()
             navigating=true
-            handoff=PageHandoff.between(controller.currentDestination?.route,target.route)
-            // Restoring a saved primary stack while leaving its reader also restores that reader.
-            // If the chosen page is already underneath us, pop to the actual page instead.
+            handoff=PageHandoff.between(controller.currentDestination?.route,target.route,profileGuest=!state.signedIn)
             val leavingReader=controller.currentDestination?.route=="reader/{articleId}"
             if(leavingReader)controller.currentBackStackEntry?.savedStateHandle?.set(READER_PAGE_NAVIGATION_KEY,true)
-            val returnedFromReader=leavingReader&&controller.popBackStack(target.route,false)
-            if(!returnedFromReader) {
-                // Do not save the departing reader as part of the primary page's restored stack.
-                if(leavingReader)controller.popBackStack()
+            // Save primary-page state, never its author/reader tail. Popping only one reader
+            // left an author (or another reader) attached to the saved search/profile stack.
+            while(controller.currentDestination?.route !in topRoutes&&controller.previousBackStackEntry!=null) {
+                controller.popBackStack()
+            }
+            if(controller.currentDestination?.route!=target.route) {
                 if(target==Destination.HOME)homeEntry++
                 if(target==Destination.PROFILE)profileEntry++
                 controller.navigate(target.route) {popUpTo(controller.graph.findStartDestination().id){saveState=true};launchSingleTop=true;restoreState=true}
+                // Also normalize stacks saved before the detail-tail fix.
+                if(controller.currentDestination?.route!=target.route)controller.popBackStack(target.route,false)
             }
         }
     }
     fun changeRoute(action: ()->Unit) {
         if(!navigating) {
             focus.clearFocus();keyboard?.hide()
-            handoff=null
             val previous=controller.currentBackStackEntry
             navigating=true
             action()
+            handoff=PageHandoff.between(previous?.destination?.route,controller.currentDestination?.route,profileGuest=!state.signedIn)
             if(previous==controller.currentBackStackEntry)navigating=false
         }
     }
-    val route: (String)->Unit={destination ->changeRoute {controller.navigate(destination){launchSingleTop=true}}}
-    val back: ()->Unit={changeRoute {controller.popBackStack()}}
-    val read: (String)->Unit={route("reader/"+it)}
-    val author: (String)->Unit={route("author/"+it)}
-    val profile: ()->Unit={changeRoute {
-        if(!controller.popBackStack(Destination.PROFILE.route,false))controller.navigate(Destination.PROFILE.route) {
-            popUpTo(controller.graph.findStartDestination().id){saveState=true};launchSingleTop=true;restoreState=true
+    val route: (String)->Unit={destination ->changeRoute {
+        if(destination==Destination.PROFILE.route) {
+            if(!controller.popBackStack(destination,false))controller.navigate(destination) {
+                popUpTo(controller.graph.findStartDestination().id){saveState=true};launchSingleTop=true;restoreState=true
+            }
+        }else {
+            val depth=(controller.currentBackStackEntry?.savedStateHandle?.get<Float>(SECONDARY_DEPTH_KEY)?:2f)+1f
+            controller.navigate(destination){launchSingleTop=true}
+            controller.currentBackStackEntry?.savedStateHandle?.set(SECONDARY_DEPTH_KEY,depth)
         }
     }}
-    val enterDemo: (String?)->Unit={name ->changeRoute {
-        // Mark only this account entry: ordinary back remains a rightward exit.
-        controller.currentBackStackEntry?.savedStateHandle?.set(ACCOUNT_COMPLETED_KEY,true)
-        if(name!=null)model.profile(state.profile.copy(name=name))
-        model.signIn()
-        controller.popBackStack()
+    val back: ()->Unit={changeRoute {controller.popBackStack()}}
+    val read: (String)->Unit={route("reader/"+it)}
+    fun visitAuthor(id: String,onReturn: ()->Unit={}) {changeRoute {
+        val departing=controller.currentBackStackEntry
+        // The route includes its author argument: another author's page is not a match.
+        if(controller.popBackStack("author/"+id,false)) {
+            // The popped entry remains mounted for its exit. Use the same opaque downward
+            // handoff as the main circle, instead of removing the reader without animation.
+            if(departing?.destination?.route=="reader/{articleId}")
+                departing.savedStateHandle[READER_PAGE_NAVIGATION_KEY]=true
+            onReturn()
+        }
+        else controller.navigate("author/"+id){launchSingleTop=true}
     }}
-    val login: ()->Unit={changeRoute {if(!controller.popBackStack(ScreenRoutes.LOGIN,false))controller.navigate(ScreenRoutes.LOGIN) {popUpTo(ScreenRoutes.RESET_SUCCESS){inclusive=true};launchSingleTop=true}}}
+    val author: (String)->Unit={visitAuthor(it)}
+    val profile: ()->Unit={route(Destination.PROFILE.route)}
+    val enterDemo: (String?)->Unit={name ->
+        if(controller.currentDestination?.route==Destination.PROFILE.route) {
+            if(name!=null)model.profile(state.profile.copy(name=name))
+            model.signIn()
+        }else changeRoute {
+            // Registration still exits down; inline login never pops the profile route.
+            controller.currentBackStackEntry?.savedStateHandle?.set(ACCOUNT_COMPLETED_KEY,true)
+            if(name!=null)model.profile(state.profile.copy(name=name))
+            model.signIn()
+            controller.popBackStack(Destination.PROFILE.route,false)
+        }
+    }
+    val canSwipeBack: ()->Boolean={!navigating}
     BackHandler(!navigating&&entry?.destination?.route in topRoutes&&entry?.destination?.route!=Destination.HOME.route) {navigate(Destination.HOME)}
     CompositionLocalProvider(LocalNavigationPlacement provides state.placement,
+        LocalHomeSnapshot provides homeSnapshot,
         LocalHomeEntry provides homeEntry,
         LocalShortcuts provides ShortcutActions(state.shortcuts,model::shortcut,model::removeShortcut)) {
         DeckCounterHost(entry?.destination?.route,SampleLibrary.articles.size) {
@@ -121,32 +159,40 @@ fun AppNavigation(state: PreviewState,model: PreviewViewModel,onStatusBarAppeara
         IdentityTransitionHost {
         NavHost(navController=controller,startDestination=Destination.HOME.route,modifier=Modifier.fillMaxSize().pointerInput(navigating) {
             if(navigating)awaitPointerEventScope {while(true)awaitPointerEvent(PointerEventPass.Initial).changes.forEach {it.consume()}}
-        }, enterTransition={pageEnter(motion)},exitTransition={pageExit(motion)},
-            popEnterTransition={pageEnter(motion,pop=true)},popExitTransition={pageExit(motion,pop=true)}) {
-            composable(Destination.HOME.route) {SceneMotionContent(Destination.HOME,handoff) {RouteSurface(edgeToEdge=true) {HomeScreen(navigate,read)}}}
+        }, enterTransition={pageEnter(motion,profileGuest=!state.signedIn)},exitTransition={pageExit(motion,profileGuest=!state.signedIn)},
+            popEnterTransition={pageEnter(motion,pop=true,profileGuest=!state.signedIn)},popExitTransition={pageExit(motion,pop=true,profileGuest=!state.signedIn)}) {
+            composable(Destination.HOME.route) {SceneMotionContent(Destination.HOME,handoff) {RouteSurface(edgeToEdge=true) {
+                HomeScreen(navigate,read,onToggleTheme={model.theme(if(dark)ThemeMode.LIGHT else ThemeMode.DARK)})
+            }}}
             composable(Destination.CATEGORY.route) {SceneMotionContent(Destination.CATEGORY,handoff) {RouteSurface(edgeToEdge=true) {CategoryScreen(navigate,read)}}}
             composable(Destination.SEARCH.route) {SceneMotionContent(Destination.SEARCH,handoff) {RouteSurface(edgeToEdge=true) {SearchScreen(navigate,read,author)}}}
             composable(Destination.PROFILE.route) {SceneMotionContent(Destination.PROFILE,handoff) {RouteSurface(edgeToEdge=true) {
-                ProfileScreen(state,model::nextTheme,navigate,route,read,profileEntry)
+                ProfileScreen(state,navigate,route,read,enterDemo,profileEntry)
             }}}
             composable("reader/{articleId}",arguments=listOf(navArgument("articleId"){type=NavType.StringType}),
                 enterTransition={EnterTransition.None},exitTransition={readerPageExit(motion)},popEnterTransition={EnterTransition.None},popExitTransition={readerPageExit(motion)}) {readerEntry ->
+                val expansion=LocalArticleExpansion.current
                 val origin=Destination.entries.find {it.route==controller.previousBackStackEntry?.destination?.route}?:Destination.PROFILE
                 RouteSurface(edgeToEdge=true,modifier=Modifier.readerPageOverlay {
                     readerEntry.savedStateHandle.get<Boolean>(READER_PAGE_NAVIGATION_KEY)==true
-                }){ReaderScreen(back,author,navigate,origin)}
+                }){ReaderScreen(back,{id->visitAuthor(id) {
+                    expansion?.forgetLastOrigin(readerEntry.arguments?.getString("articleId").orEmpty())
+                }},navigate,origin)}
             }
-            secondary(ScreenRoutes.AUTHOR,listOf(navArgument("authorId"){type=NavType.StringType}),edgeToEdge=true) {entry ->AuthorScreen(entry.arguments?.getString("authorId").orEmpty(),back,read)}
-            secondary(ScreenRoutes.LOGIN) {AccountScreen(false,back,{changeRoute {controller.navigate(ScreenRoutes.REGISTER){popUpTo(ScreenRoutes.LOGIN){inclusive=true}}}},{route(ScreenRoutes.FORGOT)},enterDemo)}
-            secondary(ScreenRoutes.REGISTER) {AccountScreen(true,back,{changeRoute {controller.navigate(ScreenRoutes.LOGIN){popUpTo(ScreenRoutes.REGISTER){inclusive=true}}}},{route(ScreenRoutes.FORGOT)},enterDemo)}
-            secondary(ScreenRoutes.FORGOT) {ForgotPasswordScreen(back,{route(ScreenRoutes.RESET)})}
-            secondary(ScreenRoutes.RESET) {ResetPasswordScreen(back,{changeRoute {controller.navigate(ScreenRoutes.RESET_SUCCESS){popUpTo(ScreenRoutes.FORGOT){inclusive=true}}}})}
-            secondary(ScreenRoutes.RESET_SUCCESS) {ResetSuccessScreen(login)}
-            secondary(ScreenRoutes.SETTINGS) {SettingsScreen(state,model,back,route,profile)}
-            secondary(ScreenRoutes.EDIT_PROFILE) {EditProfileScreen(state.profile,back,{model.profile(it);back()})}
-            secondary(ScreenRoutes.NAV_POSITION) {NavigationPositionScreen(state.placement,back,{model.placement(it);back()})}
-            secondary(ScreenRoutes.RECORDS) {RecordsScreen(state,back)}
-            secondary(ScreenRoutes.STATES) {ContentStatesScreen(back)}
+            composable(ScreenRoutes.AUTHOR,arguments=listOf(navArgument("authorId"){type=NavType.StringType})) {authorEntry ->
+                SceneMotionContent(Destination.PROFILE,handoff) {RouteSurface(edgeToEdge=true) {
+                    SwipeBackPage(canSwipeBack(),back) {
+                        AuthorScreen(authorEntry.arguments?.getString("authorId").orEmpty(),back,read,navigate)
+                    }
+                }}
+            }
+            secondary(ScreenRoutes.REGISTER,back,canSwipeBack) {RegistrationScreen(profile,enterDemo)}
+            secondary(ScreenRoutes.FORGOT,back,canSwipeBack) {ForgotPasswordScreen(profile)}
+            secondary(ScreenRoutes.SETTINGS,back,canSwipeBack) {SettingsScreen(state,model,back,route,profile)}
+            secondary(ScreenRoutes.EDIT_PROFILE,back,canSwipeBack) {EditProfileScreen(state.profile,back,{model.profile(it);back()})}
+            secondary(ScreenRoutes.NAV_POSITION,back,canSwipeBack,edgeToEdge=true) {NavigationPositionScreen(state.placement,back,{model.placement(it);back()})}
+            secondary(ScreenRoutes.RECORDS,back,canSwipeBack) {RecordsScreen(state,back)}
+            secondary(ScreenRoutes.STATES,back,canSwipeBack) {ContentStatesScreen(back)}
         }
         }
         }

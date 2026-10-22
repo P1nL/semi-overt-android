@@ -19,21 +19,38 @@ import com.semiovert.app.core.designsystem.SoTheme
 import com.semiovert.app.core.designsystem.MotionEnvironment
 import com.semiovert.app.core.designsystem.IdentityIntroHost
 import com.semiovert.app.core.designsystem.MotionFramePolicy
+import com.semiovert.app.core.designsystem.ThemeRevealHost
 import com.semiovert.app.navigation.AppNavigation
 
 class MainActivity: ComponentActivity() {
+    private var introCanStart by mutableStateOf(false)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        introCanStart=savedInstanceState!=null
+        if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.S) {
+            splashScreen.setOnExitAnimationListener { splash ->
+                // The app owns the intro; do not play a second exit animation over it.
+                splash.remove()
+                introCanStart=true
+            }
+        }
         enableEdgeToEdge()
         setContent {
             val model: PreviewViewModel=viewModel()
             val state by model.state.collectAsStateWithLifecycle()
-            MotionEnvironment {SoTheme(state.theme) {
+            MotionEnvironment {ThemeRevealHost {SoTheme(state.theme) {
                 val light=MaterialTheme.colorScheme.surface.luminance()>.5f
                 SideEffect {WindowCompat.getInsetsController(window,window.decorView).apply {isAppearanceLightNavigationBars=light}}
-                Surface(Modifier.fillMaxSize().preferredFrameRate(MotionFramePolicy.TARGET_FPS),color=MaterialTheme.colorScheme.background) {IdentityIntroHost(state.signedIn,state.profile.avatar) {AppNavigation(state,model) {statusLight ->WindowCompat.getInsetsController(window,window.decorView).isAppearanceLightStatusBars=statusLight}}}
-            }}
+                Surface(Modifier.fillMaxSize().preferredFrameRate(MotionFramePolicy.TARGET_FPS),color=MaterialTheme.colorScheme.background) {IdentityIntroHost(state.signedIn,state.profile.avatar,canStart=introCanStart) {AppNavigation(state,model) {statusLight ->WindowCompat.getInsetsController(window,window.decorView).isAppearanceLightStatusBars=statusLight}}}
+            }}}
         }
+    }
+
+    override fun onEnterAnimationComplete() {
+        super.onEnterAnimationComplete()
+        // Also covers older Android versions and launches without a system splash.
+        introCanStart=true
     }
 
     override fun onResume() {

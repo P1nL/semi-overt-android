@@ -1,0 +1,47 @@
+- generic [ref=f8e4]:
+  - complementary [ref=f8e5]:
+    - generic [ref=f8e6]:
+      - button [ref=f8e7] [cursor=pointer]
+      - button [ref=f8e10] [cursor=pointer]
+      - button [ref=f8e14] [cursor=pointer]
+      - button [ref=f8e19] [cursor=pointer]
+      - button [ref=f8e23] [cursor=pointer]
+  - generic [ref=f8e29]:
+    - textbox "文章标题" [ref=f8e30]: 编辑器逻辑回归
+    - paragraph [ref=f8e31]: 7/120
+    - generic [ref=f8e33]:
+      - button "正文" [ref=f8e34] [cursor=pointer]
+      - button "标题" [ref=f8e37] [cursor=pointer]:
+        - generic [ref=f8e38]: H2
+        - text: 标题
+      - button "插入表格" [ref=f8e42] [cursor=pointer]: 表格
+      - button "加粗" [ref=f8e48] [cursor=pointer]
+      - button "斜体" [ref=f8e51] [cursor=pointer]
+      - button "下划线" [ref=f8e54] [cursor=pointer]
+      - button "删除线" [ref=f8e57] [cursor=pointer]
+      - button "高亮" [ref=f8e61] [cursor=pointer]
+      - button "链接" [ref=f8e65] [cursor=pointer]
+      - button "左对齐" [ref=f8e69] [cursor=pointer]
+      - button "居中" [ref=f8e71] [cursor=pointer]
+      - button "右对齐" [ref=f8e73] [cursor=pointer]
+      - button "无序列表" [ref=f8e75] [cursor=pointer]
+      - button "有序列表" [ref=f8e77] [cursor=pointer]
+      - button "撤销" [ref=f8e81] [cursor=pointer]
+      - button "重做" [disabled] [ref=f8e85]
+    - text: 正文 标题 加粗 斜体 无序列表 有序列表 撤销 重做
+    - generic [ref=f8e91]:
+      - paragraph [ref=f8e92]: first second
+      - paragraph [ref=f8e93]
+      - paragraph [ref=f8e94]: third
+    - generic [ref=f8e95]: 16 字
+  - button "收起侧栏" [expanded] [ref=f8e98] [cursor=pointer]
+  - complementary [ref=f8e102]:
+    - generic [ref=f8e103]:
+      - generic [ref=f8e104]: 摘要
+      - textbox "介绍这篇文章..." [ref=f8e105]
+      - paragraph [ref=f8e106]: 0/255
+    - generic [ref=f8e107]:
+      - generic [ref=f8e108]: 封面图
+      - generic [ref=f8e109]: 点击下方按钮上传封面图
+      - button "上传封面图" [ref=f8e114] [cursor=pointer]
+      - paragraph [ref=f8e117]: 建议图片大小<5MB ，支持 JPG、PNG、WebP。

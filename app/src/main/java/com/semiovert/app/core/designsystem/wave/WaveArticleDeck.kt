@@ -22,7 +22,8 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun WaveArticleDeck(articles: List<Article>,selected: Int,onSelected: (Int)->Unit,onArticle: (String)->Unit,modifier: Modifier=Modifier,listTag: String="feed-category",deckTag: String="category-wave",frontTop: androidx.compose.ui.unit.Dp?=null,referenceHeight: androidx.compose.ui.unit.Dp?=null,
-    visibleLimit: Int=WaveDeckMath.CATEGORY_VISIBLE,showCounter: Boolean=true,consumePageDrag: (Float)->Float={0f}) {
+    visibleLimit: Int=WaveDeckMath.CATEGORY_VISIBLE,showCounter: Boolean=true,consumePageDrag: (Float)->Float={0f},
+    sceneDurationMillis: Int?=null,sceneStaggerMillis: Int=SceneMotion.DECK_STAGGER_MS,elasticEntrance: Boolean=false) {
     val ids=articles.map {it.id}
     var position by remember(ids) {mutableFloatStateOf(selected.toFloat())}
     var focusedPage by remember(ids) {mutableIntStateOf(selected)}
@@ -70,7 +71,7 @@ fun WaveArticleDeck(articles: List<Article>,selected: Int,onSelected: (Int)->Uni
         )
     }) {
         val g=WaveDeckMath.embeddedGeometry(maxWidth.value,maxHeight.value,articles.size,
-            (referenceHeight?:maxHeight).value,frontTop?.value,visibleLimit)
+            (referenceHeight?:maxHeight).value,frontTop?.value,visibleLimit,LocalDensity.current.fontScale)
         val stepPx=g.scrollStep*density
         val focused=WaveDeckMath.index(focusedPage,articles.size)
         fun settleTo(target: Int,velocity: Float=0f) {
@@ -134,7 +135,9 @@ fun WaveArticleDeck(articles: List<Article>,selected: Int,onSelected: (Int)->Uni
                     .readingStackOverlay(pose.layer) {expansion?.source?.stackLayer!=null}
                     .graphicsLayer {
                     translationX=(pose.centerX-g.cardSize/2f)*density
-                    val sceneOffset=SceneMotion.waveOffset(roll,phase,rank,poses.size,top,g.height)
+                    val sceneOffset=SceneMotion.waveOffset(roll,phase,rank,poses.size,top,g.height,
+                        sceneDurationMillis?:if(phase==FlowPhase.EXIT)SceneMotion.CATEGORY_EXIT_MS else SceneMotion.CATEGORY_ENTER_MS,
+                        sceneStaggerMillis,elasticEntrance)
                     translationY=(top+(follower?.value?:0f)+sceneOffset+readingFollow+elastic)*density
                     scaleX=pose.scale;scaleY=pose.scale;alpha=pose.alpha
                 }.testTag("wave-card-"+article.id)) {

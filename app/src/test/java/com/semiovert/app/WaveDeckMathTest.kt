@@ -1,6 +1,7 @@
 package com.semiovert.app
 
 import com.semiovert.app.core.designsystem.wave.*
+import com.semiovert.app.core.designsystem.ArticleCardMetrics
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -62,12 +63,12 @@ class WaveDeckMathTest {
         assertTrue("Personal cards extend below the fixed crop",profile.height>300f)
         assertEquals("Search preserves the category's screen-space top",category.frontTop,search.frontTop+150f,.001f)
     }
-    @Test fun profileAndSearchTopGapsMatchTheThreeCardCategoryReference() {
-        val category=WaveDeckMath.frames(3,0f,WaveDeckMath.geometry(411f,900f,3))
+    @Test fun allStacksExposeSeventyPercentOfTheFirstTitleLine() {
         fun top(pose: WaveCardPose)=pose.centerY-pose.height/2f
-        val expected=top(category[0])-top(category[1])
-        for((count,height,frontTop) in listOf(Triple(4,300f,76f),Triple(11,750f,null))) {
-            val geometry=WaveDeckMath.embeddedGeometry(411f,height,count,900f,frontTop)
+        for(fontScale in listOf(1f,1.2f))for((count,height,frontTop) in listOf(Triple(3,900f,null),Triple(4,300f,76f),Triple(11,750f,null))) {
+            val expected=34f+29f*fontScale*.7f
+            assertEquals(expected,ArticleCardMetrics.stackGap(fontScale),.001f)
+            val geometry=WaveDeckMath.embeddedGeometry(411f,height,count,900f,frontTop,fontScale=fontScale)
             val poses=WaveDeckMath.frames(count,0f,geometry)
             for(index in 1 until count)assertEquals("Top gaps must not shrink with result count or viewport",expected,top(poses[index-1])-top(poses[index]),.001f)
             assertTrue("The backmost visible top is not hidden by a counter strip",top(poses.last())>=WaveDeckMath.TOP_INSET-.001f)

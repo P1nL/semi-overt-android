@@ -59,7 +59,8 @@ private val SoTypography = Typography(
 fun SoTheme(mode: ThemeMode = ThemeMode.SYSTEM, content: @Composable () -> Unit) {
     val dark = when (mode) { ThemeMode.SYSTEM -> isSystemInDarkTheme(); ThemeMode.DARK -> true; ThemeMode.LIGHT -> false }
     val target=if(dark)DarkColors else LightColors
-    @Composable fun blend(value: Color)=animateColorAsState(value,tween(motionMillis(220)),label="theme-color").value
+    val revealing=LocalThemeReveal.current?.running==true
+    @Composable fun blend(value: Color)=animateColorAsState(value,tween(if(revealing)0 else motionMillis(220)),label="theme-color").value
     val colors=target.copy(
         primary=blend(target.primary),onPrimary=blend(target.onPrimary),primaryContainer=blend(target.primaryContainer),onPrimaryContainer=blend(target.onPrimaryContainer),
         secondary=blend(target.secondary),onSecondary=blend(target.onSecondary),secondaryContainer=blend(target.secondaryContainer),onSecondaryContainer=blend(target.onSecondaryContainer),

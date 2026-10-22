@@ -7,6 +7,22 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class DeckSceneMotionTest {
+    @Test fun categoryEntranceKeepsASmallReboundInsideItsExistingWindow() {
+        val travel=780f+24f-220f
+        fun offset(p: Float,elastic: Boolean=true,phase: FlowPhase=FlowPhase.ENTER)=
+            SceneMotion.waveOffset(if(phase==FlowPhase.ENTER)1f-p else p,phase,0,1,220f,780f,1000,0,elastic)
+        assertEquals(travel,offset(0f),.001f)
+        assertEquals(travel*.5f,offset(.5f),.01f)
+        val lowest=(55..100).minOf {offset(it/100f)}
+        assertTrue("Entrance gently passes its resting point",lowest< -1f)
+        assertTrue("Rebound stays subtle",lowest> -travel*.04f)
+        assertEquals(0f,offset(1f),0f)
+        for(frame in 0..20) {
+            val p=frame/20f
+            assertEquals(offset(p,false,FlowPhase.EXIT),offset(p,true,FlowPhase.EXIT),0f)
+        }
+    }
+
     @Test fun readingOpenAndReturnLeaveTimeForVisibleStages() {
         val old=TargetBasedAnimation(SceneMotion.readingSpring(),Float.VectorConverter,0f,1f)
         val opening=TargetBasedAnimation(SceneMotion.readingOpenSpring(),Float.VectorConverter,0f,1f)
@@ -60,21 +76,29 @@ class DeckSceneMotionTest {
     @Test fun primaryElementsGetOneSecondWithOverlappingSceneWindows() {
         assertEquals(1000,SceneMotion.PRIMARY_ELEMENT_MS)
         assertEquals(1180,SceneMotion.HOME_ENTER_MS)
-        assertEquals(1500,SceneMotion.PROFILE_ENTER_MS);assertEquals(1500,SceneMotion.PROFILE_EXIT_MS)
-        assertEquals(1180,SceneMotion.SEARCH_ENTER_MS);assertEquals(1180,SceneMotion.SEARCH_EXIT_MS)
+        assertEquals(1100,SceneMotion.PROFILE_ENTER_MS);assertEquals(1000,SceneMotion.PROFILE_EXIT_MS)
+        assertEquals(450,SceneMotion.PROFILE_GUEST_MS)
+        assertEquals(900,SceneMotion.SEARCH_ENTER_MS);assertEquals(900,SceneMotion.SEARCH_EXIT_MS)
     }
     @Test fun profileWindowsUseRealMillisecondsInsteadOfCompressedProportions() {
-        for((start,end) in listOf(0f to 1000f,120f to 900f,220f to 820f,280f to 880f,340f to 940f,400f to 1000f,320f to 1500f,1000f to 1500f)) {
+        for((start,end) in listOf(0f to 1000f,120f to 620f,200f to 550f,240f to 600f,280f to 680f,300f to 650f,100f to 1100f,300f to 550f)) {
             assertEquals(0f,SceneMotion.profileSegment(0f,start,end),0f)
             assertEquals(.5f,SceneMotion.profileSegment((start+end)/(2f*SceneMotion.PROFILE_ENTER_MS),start,end),.001f)
             assertEquals(1f,SceneMotion.profileSegment(1f,start,end),0f)
+        }
+    }
+    @Test fun profileDeckGetsItsFullSecondWithoutASecondRoundOfStagger() {
+        val travel=780f+24f-220f
+        for(rank in 0..4) {
+            assertEquals(travel*.5f,SceneMotion.waveOffset(.5f,FlowPhase.ENTER,rank,5,220f,780f,1000,0),.01f)
+            assertEquals(0f,SceneMotion.waveOffset(0f,FlowPhase.ENTER,rank,5,220f,780f,1000,0),0f)
         }
     }
     @Test fun sceneTravelDoesNotFinishMostOfItsDistanceInTheFirstThird() {
         assertTrue(SoSceneEase.transform(.3f)<.3f)
         assertEquals(.5f,SoSceneEase.transform(.5f),.001f)
         assertTrue(SoSceneEase.transform(.8f)<.95f)
-        assertEquals(.5f,SceneMotion.searchHeader(500f/SceneMotion.SEARCH_ENTER_MS),.001f)
+        assertEquals(.5f,SceneMotion.searchHeader(375f/SceneMotion.SEARCH_ENTER_MS),.001f)
         assertEquals(.5f,SceneMotion.profileSegment(500f/SceneMotion.PROFILE_ENTER_MS,0f,1000f),.001f)
     }
     @Test fun eachWaveCardMovesForTheWholeSecondAfterItsOwnStagger() {
@@ -85,6 +109,28 @@ class DeckSceneMotionTest {
             assertEquals(travel*.5f,SceneMotion.waveOffset(halfway,FlowPhase.EXIT,rank,count,top,height),.01f)
             val finished=(delay+1000f)/SceneMotion.CATEGORY_EXIT_MS
             assertEquals(travel,SceneMotion.waveOffset(finished,FlowPhase.EXIT,rank,count,top,height),.01f)
+        }
+    }
+    @Test fun searchEntranceAndExitFitTheSameFasterHeaderAndCardWindows() {
+        val duration=SceneMotion.SEARCH_ENTER_MS
+        val stagger=SceneMotion.SEARCH_STAGGER_MS
+        val primary=SceneMotion.SEARCH_PRIMARY_MS
+        assertEquals(750,primary);assertEquals(150,stagger)
+        assertEquals(1f,SceneMotion.searchHeader(primary.toFloat()/duration),.001f)
+        assertEquals(duration,SceneMotion.SEARCH_EXIT_MS)
+        assertEquals(.5f,SceneMotion.searchHeader(375f/SceneMotion.SEARCH_EXIT_MS),.001f)
+        val count=7;val top=220f;val height=780f;val travel=height+24f-top
+        for(rank in 0 until count) {
+            val delay=(count-1-rank).toFloat()/(count-1)*stagger
+            val halfway=1f-(delay+primary/2f)/duration
+            assertEquals(travel*.5f,SceneMotion.waveOffset(halfway,FlowPhase.ENTER,rank,count,top,height,duration,stagger),.01f)
+            val finished=1f-(delay+primary)/duration
+            assertEquals(0f,SceneMotion.waveOffset(finished,FlowPhase.ENTER,rank,count,top,height,duration,stagger),.001f)
+            val exitDelay=rank.toFloat()/(count-1)*stagger
+            val exitHalfway=(exitDelay+primary/2f)/duration
+            assertEquals(travel*.5f,SceneMotion.waveOffset(exitHalfway,FlowPhase.EXIT,rank,count,top,height,duration,stagger),.01f)
+            val exitFinished=(exitDelay+primary)/duration
+            assertEquals(travel,SceneMotion.waveOffset(exitFinished,FlowPhase.EXIT,rank,count,top,height,duration,stagger),.001f)
         }
     }
     @Test fun homeEntranceKeepsArticleOneAtTheRealFocusAndStartsAboveTheScreen() {

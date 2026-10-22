@@ -143,7 +143,6 @@ class SharedCardMotionTest {
     }
     @Test fun ownPublicArticlesShareLiftAndReturnWithoutReplayingProfileEntrance() {
         navigate("我的")
-        app.onNodeWithText("登录",useUnmergedTree=true).performClick()
         app.onNodeWithText("填入示例资料").performScrollTo().performClick()
         app.onNodeWithTag("account-submit").performScrollTo().performClick();app.waitForIdle()
         app.onNodeWithTag("profile-identity").performClick()

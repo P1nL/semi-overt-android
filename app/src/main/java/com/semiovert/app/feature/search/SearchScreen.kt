@@ -20,6 +20,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.*
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -71,7 +72,9 @@ fun SearchScreen(onNavigate: (Destination)->Unit,onArticle: (String)->Unit,onAut
             OutlinedTextField(value=query,onValueChange=updateQuery,modifier=Modifier.fillMaxWidth().height(56.dp).graphicsLayer {
                 translationX=travel*(1f-identityProgress)
             }.testTag("search-input"),
-                singleLine=true,placeholder={Text("搜索本地示例")},textStyle=MaterialTheme.typography.bodyMedium,
+                singleLine=true,placeholder={Text(if(searchScope==SearchScope.ARTICLES)"搜索文章标题或作者" else "搜索作者昵称或简介",
+                    style=MaterialTheme.typography.bodyMedium,maxLines=1,overflow=TextOverflow.Ellipsis)},
+                textStyle=MaterialTheme.typography.bodyMedium,
                 shape=CircleShape,keyboardOptions=KeyboardOptions(imeAction=ImeAction.Search),keyboardActions=KeyboardActions(onSearch={keyboard?.hide()}),
                 trailingIcon={if(query.isNotEmpty()) IconButton(onClick={updateQuery("")}) {SoIcon(SoSymbol.CLOSE,"清空搜索")}})
             }
@@ -101,6 +104,7 @@ fun SearchScreen(onNavigate: (Destination)->Unit,onArticle: (String)->Unit,onAut
                 if(articles.isNotEmpty()&&useWave)
                     WaveArticleDeck(articles,selectedArticle,{selectedArticle=it},onArticle,listTag="feed-search",deckTag="search-wave",referenceHeight=referenceHeight,
                         visibleLimit=WaveDeckMath.SEARCH_VISIBLE,
+                        sceneDurationMillis=SceneMotion.SEARCH_ENTER_MS,sceneStaggerMillis=SceneMotion.SEARCH_STAGGER_MS,
                         frontTop=WaveDeckMath.restingFrontTop(maxWidth.value,maxHeight.value,referenceHeight.value).dp)
                 else ArticleFeed(articles,articleList,"feed-search",onArticle,emptyMessage="没有找到相关文章",
                     emptyHint="换个关键词，或切换到作者搜索。",modifier=Modifier.fillMaxSize().then(resultMotion),categoryCards=true)

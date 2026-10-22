@@ -2,6 +2,8 @@ package com.semiovert.app.core.designsystem
 
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import kotlin.math.PI
+import kotlin.math.sin
 
 enum class FlowPhase { IDLE, ENTER, EXIT }
 
@@ -13,10 +15,13 @@ object SceneMotion {
     const val HOME_EXIT_MS = 900
     const val CATEGORY_EXIT_MS = PRIMARY_ELEMENT_MS + DECK_STAGGER_MS
     const val CATEGORY_ENTER_MS = PRIMARY_ELEMENT_MS + DECK_STAGGER_MS
-    const val PROFILE_ENTER_MS = 1500
-    const val PROFILE_EXIT_MS = 1500
-    const val SEARCH_ENTER_MS = PRIMARY_ELEMENT_MS + DECK_STAGGER_MS
-    const val SEARCH_EXIT_MS = PRIMARY_ELEMENT_MS + DECK_STAGGER_MS
+    const val PROFILE_ENTER_MS = 1100
+    const val PROFILE_EXIT_MS = 1000
+    const val PROFILE_GUEST_MS = 450
+    const val SEARCH_PRIMARY_MS = 750
+    const val SEARCH_STAGGER_MS = 150
+    const val SEARCH_ENTER_MS = SEARCH_PRIMARY_MS + SEARCH_STAGGER_MS
+    const val SEARCH_EXIT_MS = SEARCH_ENTER_MS
     const val CATEGORY_SWAP_MS = 420
     const val DRAWER_MS = 400
     const val READER_PAGE_EXIT_MS = 400
@@ -50,20 +55,27 @@ object SceneMotion {
     fun homeReadingFade(progress: Float)=SoEase.transform(segment(progress,0f,.60f))
     // Windows are real milliseconds, not old 1700ms proportions compressed into a 1s scene.
     fun profileSegment(progress: Float,start: Float,end: Float)=segment(progress*PROFILE_ENTER_MS,start,end)
-    fun searchHeader(progress: Float)=SoSceneEase.transform(segment(progress*SEARCH_ENTER_MS,0f,PRIMARY_ELEMENT_MS.toFloat()))
+    fun searchHeader(progress: Float)=SoSceneEase.transform(segment(progress*SEARCH_ENTER_MS,0f,SEARCH_PRIMARY_MS.toFloat()))
     fun commits(progress: Float,upwardVelocityDp: Float)=progress>=LIFT_THRESHOLD||(progress>.08f&&upwardVelocityDp>=900f)
 
     /** rank zero is the foreground; entrance deliberately reverses that ordering. */
-    fun waveOffset(hidden: Float,phase: FlowPhase,rank: Int,count: Int,top: Float,height: Float): Float {
+    fun waveOffset(hidden: Float,phase: FlowPhase,rank: Int,count: Int,top: Float,height: Float,
+        durationMillis: Int=if(phase==FlowPhase.EXIT)CATEGORY_EXIT_MS else CATEGORY_ENTER_MS,
+        staggerMillis: Int=DECK_STAGGER_MS,elasticEntrance: Boolean=false): Float {
         if(phase==FlowPhase.IDLE||hidden<=0f)return 0f
-        val duration=if(phase==FlowPhase.EXIT)CATEGORY_EXIT_MS else CATEGORY_ENTER_MS
-        val span=DECK_STAGGER_MS.toFloat()
+        val duration=durationMillis
+        val span=staggerMillis.toFloat()
         val order=if(phase==FlowPhase.EXIT)rank else count-1-rank
         val delay=if(count<=1)0f else order.toFloat()/(count-1)*span
         val elapsed=(if(phase==FlowPhase.EXIT)hidden else 1f-hidden)*duration
-        val p=((elapsed-delay)/PRIMARY_ELEMENT_MS).coerceIn(0f,1f)
+        // Each card's full travel must fit before the scene's final stagger finishes.
+        val p=((elapsed-delay)/(duration-staggerMillis)).coerceIn(0f,1f)
         val travel=height+24f-top
-        return travel*if(phase==FlowPhase.EXIT)SoSceneEase.transform(p) else 1f-SoSceneEase.transform(p)
+        if(phase==FlowPhase.EXIT)return travel*SoSceneEase.transform(p)
+        // A short, smooth settling tail stays inside the original one-second card window.
+        val tail=sin(PI.toFloat()*segment(p,.55f,1f))
+        val inertia=if(elasticEntrance).085f*tail*tail else 0f
+        return travel*(1f-SoSceneEase.transform(p)-inertia)
     }
     fun readingOffset(progress: Float,rank: Int,top: Float,height: Float): Float {
         val delay=(rank*.055f).coerceAtMost(.28f)

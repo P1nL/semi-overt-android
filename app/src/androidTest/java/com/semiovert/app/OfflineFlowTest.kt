@@ -64,12 +64,12 @@ class OfflineFlowTest {
 
     @Test fun darkPageAndNavigationSheetUseRequestedBackground() {
         navigate("我的")
-        app.onNodeWithText("外观").performClick()
-        app.onNodeWithText("外观").performClick()
-        app.onNodeWithText("深色").assertIsDisplayed()
+        app.onNodeWithContentDescription("设置").performClick()
+        app.onNodeWithText("深色").performClick()
+        back()
         val page=app.onRoot().captureToImage().toPixelMap()
         assertEquals(Color(0xFF191A1C).toArgb(),page[2,2].toArgb())
-        app.onNodeWithContentDescription("打开页面导航").performClick()
+        app.onNodeWithTag("main-circle").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnLongClick){it()}
         val sheet=app.onNodeWithText("去哪里看看").captureToImage().toPixelMap()
         assertEquals(Color(0xFF191A1C).toArgb(),sheet[0,0].toArgb())
     }

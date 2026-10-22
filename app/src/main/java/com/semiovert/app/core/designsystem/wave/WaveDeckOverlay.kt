@@ -19,7 +19,7 @@ import androidx.compose.material3.MaterialTheme
 import com.semiovert.app.core.designsystem.*
 
 private val LocalWaveDeckOverlay=staticCompositionLocalOf<SharedTransitionScope?> {null}
-@Stable private class MainCircleDrawOwner(val icon: MainCircleIconState) {
+@Stable private class MainCircleDrawOwner(val icon: MainCircleIconState,val colors: MainCircleColorState) {
     val entries=mutableStateListOf<Any>()
 }
 private val LocalMainCircleDrawOwner=staticCompositionLocalOf<MainCircleDrawOwner?> {null}
@@ -28,7 +28,7 @@ private val LocalMainCircleDrawOwner=staticCompositionLocalOf<MainCircleDrawOwne
 @Composable
 fun WaveDeckOverlayHost(content: @Composable ()->Unit) {
     val scope=rememberCoroutineScope()
-    val mainCircleOwner=remember(scope) {MainCircleDrawOwner(MainCircleIconState(scope))}
+    val mainCircleOwner=remember(scope) {MainCircleDrawOwner(MainCircleIconState(scope),MainCircleColorState(scope))}
     SharedTransitionLayout(Modifier.fillMaxSize()) {
         CompositionLocalProvider(LocalWaveDeckOverlay provides this,LocalMainCircleDrawOwner provides mainCircleOwner) {content()}
     }
@@ -86,13 +86,37 @@ internal fun MainCircleMorphIcon(ownerKey: Any,page: SoSymbol,readingProgress: F
     val motion=LocalMotionEnabled.current
     SideEffect {
         if(active) {
-            if(controlledReading)owner.icon.showReading(page,readingProgress)
-            else owner.icon.showPage(page,motion)
+            if(controlledReading)owner.icon.showReading(page,readingProgress,ownerKey)
+            else owner.icon.showPage(page,motion,ownerKey)
         }
     }
     val morph=owner.icon.morph
     if(morph==null)ReadingMorphIcon(page,readingProgress,modifier,tint)
     else MorphIconCanvas(morph.strokes,morph.source.symbol,morph.target.symbol!!,owner.icon.progress,modifier,tint)
+}
+
+@Composable
+internal fun mainCircleColorState(): MainCircleColorState?=LocalMainCircleDrawOwner.current?.colors
+
+@Composable
+internal fun mainCircleIconState(): MainCircleIconState?=LocalMainCircleDrawOwner.current?.icon
+
+/** An opaque secondary page covers the circle progressively with its actual sliding bounds. */
+@Composable
+internal fun Modifier.secondaryPageOverlay(depth: Float): Modifier {
+    val overlay=LocalWaveDeckOverlay.current ?: return this
+    return with(overlay) {this@secondaryPageOverlay.renderInSharedTransitionScopeOverlay(
+        zIndexInOverlay=depth,renderInOverlay={true})}
+}
+
+/** Only the currently drawn route can change the persistent background and foreground. */
+@Composable
+internal fun mainCircleColors(ownerKey: Any,target: CircleColors): CircleColors {
+    val owner=LocalMainCircleDrawOwner.current?:return target
+    val active=owner.entries.lastOrNull()===ownerKey
+    val motion=LocalMotionEnabled.current
+    SideEffect {if(active)owner.colors.showPage(ownerKey,target,motion)}
+    return owner.colors.colors?:target
 }
 
 /** A navigating reader stays opaque above the destination until it has slid offscreen. */

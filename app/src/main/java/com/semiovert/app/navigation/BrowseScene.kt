@@ -12,6 +12,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.ClipOp
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.input.key.*
@@ -21,9 +26,13 @@ import androidx.compose.ui.platform.*
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.text.font.FontWeight
 import com.semiovert.app.core.designsystem.*
 import com.semiovert.app.core.designsystem.wave.mainCircleOverlay
 import com.semiovert.app.core.designsystem.wave.MainCircleMorphIcon
+import com.semiovert.app.core.designsystem.wave.mainCircleColorState
+import com.semiovert.app.core.designsystem.wave.mainCircleIconState
+import com.semiovert.app.core.designsystem.wave.mainCircleColors
 import com.semiovert.app.core.model.NavigationShortcut
 import kotlinx.coroutines.*
 import kotlin.math.roundToInt
@@ -36,12 +45,13 @@ fun BrowseScene(
     header: (@Composable (() -> Unit) -> Unit)? = null,
     showHeader: Boolean = true,
     readerMode: Boolean = false,
+    onToggleTheme: (() -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
     var navigationOpen by remember { mutableStateOf(false) }
     val keyboard = LocalSoftwareKeyboardController.current
-    val navigate: (Destination) -> Unit = { keyboard?.hide(); navigationOpen=false; onNavigate(it) }
     val expansion=LocalArticleExpansion.current
+    val navigate: (Destination) -> Unit = { keyboard?.hide();navigationOpen=false;expansion?.forgetOrigins();onNavigate(it) }
     val homeAlpha=if(!readerMode&&destination==Destination.HOME&&expansion?.source?.origin==ArticleOrigin.HOME)
         1f-SceneMotion.homeReadingFade(expansion.progress) else 1f
     BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -65,6 +75,10 @@ fun BrowseScene(
                     IdentityAvatar(Modifier.semantics {contentDescription="打开个人页"},size=56)
                 }
             }
+        }
+        if(destination==Destination.HOME&&onToggleTheme!=null) {
+            ThemeToggleButton(onToggleTheme,Modifier.align(Alignment.TopEnd).statusBarsPadding()
+                .padding(top=76.dp,end=16.dp).readingChromeFade())
         }
         MainCircle(destination,navigate,onPrimary ?: {navigationOpen=true}, {navigationOpen=true},maxWidth,maxHeight,readerMode)
         ShortcutCircles(destination,navigate,maxWidth,maxHeight,readerMode)
@@ -103,6 +117,9 @@ private fun BoxScope.MainCircle(destination: Destination,onNavigate: (Destinatio
     // Only the inner icon follows reading progress; the circular surface stays opaque and stationary.
     val readerIcon=if(readerMode)1f else if(expansion?.active==true)SceneMotion.readingBody(expansion.progress) else 0f
     val circleKey=remember {Any()}
+    val mainColors=mainCircleColors(circleKey,destination.circleColors)
+    val colorState=mainCircleColorState()
+    val iconState=mainCircleIconState()
     val offsets=remember(placement.x,readerMode) {when {
         readerMode&&placement.x<.33f->listOf(Offset(156f,-8f),Offset(136f,-88f),Offset(76f,-150f),Offset(0f,-174f))
         readerMode&&placement.x>.66f->listOf(Offset(-156f,-8f),Offset(-136f,-88f),Offset(-76f,-150f),Offset(0f,-174f))
@@ -121,40 +138,73 @@ private fun BoxScope.MainCircle(destination: Destination,onNavigate: (Destinatio
         if(!closing) {
             closing=true
             menuJob?.cancel()
+            if(target!=null&&pin==null) {
+                colorState?.beginMerge(circleKey,target.circleColors)
+                iconState?.beginMerge(circleKey,target.symbol)
+            }
             menuJob=scope.launch {
                 val others=choices.indices.filter {choices[it]!=target}
                 val returning=others+if(pin==null&&target!=null)listOf(choices.indexOf(target)) else emptyList()
                 coroutineScope {returning.forEachIndexed {order,index ->launch {
                     if(motion)kotlinx.coroutines.delay(order*35L)
-                    progress[index].animateTo(0f,if(motion)SceneMotion.navigationSpring() else snap())
+                    val start=progress[index].value.coerceAtLeast(.001f)
+                    progress[index].animateTo(0f,if(motion)SceneMotion.navigationSpring() else snap()) {
+                        if(target==choices[index]&&pin==null) {
+                            val merged=1f-value/start
+                            colorState?.merge(merged);iconState?.merge(merged)
+                        }
+                    }
                 }}}
                 if(target!=null) {
                     if(pin!=null) shortcuts.save(NavigationShortcut(target.route,((mainCenter.x/density+pin.x-42f)/(availableWidth.value-72f)).coerceIn(0f,1f),((mainCenter.y/density+pin.y-42f)/(availableHeight.value-128f-bottomInset)).coerceIn(0f,1f)))
                 }
                 progress.forEach {it.snapTo(0f)}
+                if(target!=null&&pin==null) {colorState?.merge(1f);iconState?.merge(1f)}
                 expanded=false;closing=false;highlighted=null;pinReady=false;pulledPosition=null
                 if(target!=null&&pin==null)currentNavigate(target)
             }
         }
     }
     BackHandler(expanded) {finish(null,null)}
-    Box(Modifier.align(Alignment.BottomEnd).imePadding().navigationBarsPadding().padding(end=20.dp,bottom=18.dp).offset(x=-(availableWidth-96.dp).coerceAtLeast(0.dp)*(1f-placement.x),y=-140.dp*placement.y).size(56.dp).onGloballyPositioned {mainCenter=it.positionInParent()+Offset(it.size.width/2f,it.size.height/2f)}) {
+    Box(Modifier.align(Alignment.BottomEnd).imePadding().navigationBarsPadding().padding(end=20.dp,bottom=18.dp).offset(x=-(availableWidth-96.dp).coerceAtLeast(0.dp)*(1f-placement.x),y=-140.dp*placement.y).size(56.dp).mainCircleOverlay(circleKey).onGloballyPositioned {mainCenter=it.positionInParent()+Offset(it.size.width/2f,it.size.height/2f)}) {
         choices.forEachIndexed { index,item ->
-            val amount=progress[index].value
+            val amount=progress[index].value.coerceAtLeast(0f)
             val offset=(if(highlighted==item)pulledPosition?:offsets[index] else offsets[index])*amount
-            val hover by animateFloatAsState(if(highlighted==item)1.12f else 1f,tween(if(motion)120 else 0),label="nav-hover")
-            if(expanded||closing) Column(Modifier.wrapContentSize(Alignment.TopStart,unbounded=true).offset(offset.x.dp,offset.y.dp).width(56.dp).graphicsLayer {alpha=amount.coerceIn(0f,1f);scaleX=(.7f+.3f*amount)*hover;scaleY=scaleX}.testTag("radial-"+item.route),horizontalAlignment=Alignment.CenterHorizontally) {
-                Surface(shape=CircleShape,color=if(highlighted==item) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                    contentColor=if(highlighted==item) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+            val hover by animateFloatAsState(if(highlighted==item)1.14f else 1f,
+                if(motion)spring(dampingRatio=.55f,stiffness=420f,visibilityThreshold=.001f) else snap(),label="nav-hover")
+            val scale=(.7f+.3f*amount)*hover
+            val smallCenter=offset+Offset(28f,26f)
+            val radius=26f*scale
+            val separation=if(motion)LiquidCircleGeometry.materialProgress((smallCenter-Offset(28f,28f)).getDistance(),28f,radius) else 1f
+            val selectedColors=animatedCircleColors(if(highlighted==item)item.circleColors else mainColors,"radial-"+item.route)
+            val liquidColors=mainColors.towards(selectedColors,separation)
+            if(expanded||closing) {
+                if(motion)Canvas(Modifier.matchParentSize().zIndex(1f)) {
+                    val neck=LiquidCircleGeometry.bridge(Offset(28f,28f)*density,28f*density,smallCenter*density,radius*density)
+                    if(neck!=null) {
+                        // Paint over just the shadow inside the neck, never over the fixed body/icon.
+                        val body=Path().apply {addOval(Rect(0f,0f,size.width,size.height))}
+                        clipPath(body,ClipOp.Difference) {drawLiquidBridge(neck,mainColors.background)}
+                    }
+                }
+                Column(Modifier.wrapContentSize(Alignment.TopStart,unbounded=true).offset(offset.x.dp,offset.y.dp).width(56.dp).graphicsLayer {
+                    // The bridge and disk must share a center, independent of the label's height.
+                    transformOrigin=TransformOrigin(.5f,26.dp.toPx()/size.height)
+                    scaleX=scale;scaleY=scale
+                }.testTag("radial-"+item.route),horizontalAlignment=Alignment.CenterHorizontally) {
+                Surface(shape=CircleShape,color=liquidColors.background,contentColor=liquidColors.foreground,
                     modifier=Modifier.size(52.dp)) {
-                    Box(contentAlignment=Alignment.Center) { SoIcon(item.symbol,tint=if(highlighted==item) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant) }
+                    Box(Modifier.graphicsLayer {alpha=separation},contentAlignment=Alignment.Center) { SoIcon(item.symbol,tint=liquidColors.foreground) }
                 }
                 val labelAlpha by animateFloatAsState(if(highlighted==item)1f else 0f,tween(if(motion)120 else 0),label="nav-label")
-                Text(if(pinReady&&highlighted==item)"松手固定" else item.label,style=MaterialTheme.typography.labelMedium,modifier=Modifier.padding(top=4.dp).graphicsLayer {alpha=labelAlpha})
+                Text(if(pinReady&&highlighted==item)"松手固定" else item.label,
+                    style=MaterialTheme.typography.labelMedium.copy(fontFamily=NavigationLabelFont,fontWeight=FontWeight.Bold),
+                    maxLines=1,softWrap=false,modifier=Modifier.wrapContentWidth(unbounded=true).padding(top=4.dp).graphicsLayer {alpha=labelAlpha*separation})
+                }
             }
         }
-        Surface(shape=CircleShape,color=MaterialTheme.colorScheme.primaryContainer,shadowElevation=6.dp,
-            modifier=Modifier.size(56.dp).mainCircleOverlay(circleKey).testTag("main-circle").semantics {
+        Surface(shape=CircleShape,color=mainColors.background,contentColor=mainColors.foreground,shadowElevation=6.dp,
+            modifier=Modifier.size(56.dp).testTag("main-circle").semantics {
                 role=Role.Button
                 contentDescription=if(readerMode)"打开目录" else destination.label+"主圆"
                 stateDescription=if(readerMode)"点按打开目录，长按打开页面导航" else when(destination) { Destination.CATEGORY->"点按切换阅读时长";Destination.SEARCH->"点按切换文章与作者";else->"点按打开页面导航" }
@@ -200,7 +250,7 @@ private fun BoxScope.MainCircle(destination: Destination,onNavigate: (Destinatio
             }) {
             Box(contentAlignment=Alignment.Center) {
                 MainCircleMorphIcon(circleKey,destination.symbol,readerIcon,readerMode||expansion?.active==true,
-                    tint=MaterialTheme.colorScheme.onPrimaryContainer)
+                    tint=mainColors.foreground)
             }
         }
     }
@@ -222,7 +272,8 @@ private fun BoxScope.ShortcutCircles(destination: Destination,onNavigate: (Desti
         val x=16.dp+usableWidth*item.x+drag.x.dp
         val y=16.dp+usableHeight*item.y+drag.y.dp
         var reconnect by remember {mutableStateOf(false)}
-        Surface(shape=CircleShape,color=if(reconnect)MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,shadowElevation=3.dp,
+        val colors=animatedCircleColors(if(reconnect)destination.circleColors else target.circleColors,"shortcut-"+target.route)
+        Surface(shape=CircleShape,color=colors.background,contentColor=colors.foreground,shadowElevation=3.dp,
             modifier=Modifier.offset(x.coerceIn(8.dp,width-60.dp),y.coerceIn(8.dp,height-80.dp-inset.dp)).size(52.dp).readingChromeFade().testTag("shortcut-"+target.route)
                 .semantics {contentDescription=target.label+"快捷入口";stateDescription=if(reconnect)"松手并回主圆" else "长按拖动，拖回主圆可收起";customActions=listOf(CustomAccessibilityAction("收回快捷入口") {actions.remove(item.route);true})}
                 .pointerInput(item,placement,width,height) {
@@ -239,7 +290,7 @@ private fun BoxScope.ShortcutCircles(destination: Destination,onNavigate: (Desti
                         reconnect=(center-main).getDistance()<52f
                     }
                 }.clickable {if(readerMode||target!=destination)onNavigate(target)}) {
-            Box(contentAlignment=Alignment.Center) {SoIcon(target.symbol,tint=MaterialTheme.colorScheme.onSecondaryContainer)}
+            Box(contentAlignment=Alignment.Center) {SoIcon(target.symbol,tint=colors.foreground)}
         }
     }
 }

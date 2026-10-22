@@ -1,6 +1,7 @@
 package com.semiovert.app.core.designsystem.wave
 
 import androidx.compose.animation.core.spring
+import com.semiovert.app.core.designsystem.ArticleCardMetrics
 import kotlin.math.*
 
 data class WaveDeckGeometry(val width: Float,val height: Float,val cardSize: Float,val frontTop: Float,val stackStep: Float,
@@ -52,10 +53,10 @@ object WaveDeckMath {
     }
 
     fun dragDelta(deltaPx: Float,stepPx: Float)=deltaPx/stepPx*(if(deltaPx>0f)DOWNWARD_GAIN else 1f)
-    /** Match the reference category's three-card top gap, regardless of result count or crop. */
-    fun embeddedGeometry(width: Float,viewportHeight: Float,count: Int,referenceHeight: Float,frontTop: Float?=null,visibleLimit: Int=count): WaveDeckGeometry {
+    /** A title-derived gap shared by category, search and both kinds of profile. */
+    fun embeddedGeometry(width: Float,viewportHeight: Float,count: Int,referenceHeight: Float,frontTop: Float?=null,visibleLimit: Int=count,fontScale: Float=1f): WaveDeckGeometry {
         val reference=geometry(width,referenceHeight,3)
-        val gap=stackTop(0f,reference)-stackTop(1f,reference)
+        val gap=ArticleCardMetrics.stackGap(fontScale)
         // Reserve space for the visible window, not for every article in the data set.
         val visible=count.coerceAtMost(visibleLimit.coerceAtLeast(1))
         val top=max(frontTop ?: (reference.frontTop-(referenceHeight-viewportHeight)),TOP_INSET+gap*(visible-1).coerceAtLeast(0))
@@ -67,8 +68,8 @@ object WaveDeckMath {
         viewportHeight-geometry(width,referenceHeight,3).frontHeight*RESTING_VISIBLE_FRACTION
 
     /** Personal-page scrolling uses the same visible fraction as category and search. */
-    fun profileViewportHeight(width: Float,referenceHeight: Float,count: Int): Float {
-        val deck=embeddedGeometry(width,0f,count,referenceHeight,76f,PROFILE_VISIBLE)
+    fun profileViewportHeight(width: Float,referenceHeight: Float,count: Int,fontScale: Float=1f): Float {
+        val deck=embeddedGeometry(width,0f,count,referenceHeight,76f,PROFILE_VISIBLE,fontScale)
         // Elastic reserve stays offscreen and does not extend page scrolling.
         return deck.frontTop+deck.frontHeight*RESTING_VISIBLE_FRACTION
     }
