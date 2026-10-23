@@ -104,12 +104,15 @@ class OfflineFlowTest {
 
     @Test fun localSearchSupportsAuthorsAndBothEmptyStates() {
         navigate("搜索")
-        app.onNodeWithTag("search-input").performTextInput("林间")
+        app.onNodeWithTag("search-input").performTextInput("林间");app.onNodeWithTag("search-input").performImeAction()
         app.onNodeWithTag("article-forest").assertIsDisplayed()
         app.onNodeWithTag("main-circle").performClick()
         app.onNodeWithTag("author-results").assertIsDisplayed()
         app.onNodeWithText("林间来信").assertIsDisplayed()
-        app.onNodeWithTag("search-input").performTextReplacement("不会命中的词")
+        // Compose's test clock skips animation time; the submission throttle uses real elapsed time.
+        val nextSubmit=android.os.SystemClock.elapsedRealtime()+1200
+        app.waitUntil(2500) {android.os.SystemClock.elapsedRealtime()>=nextSubmit}
+        app.onNodeWithTag("search-input").performTextReplacement("不会命中的词");app.onNodeWithTag("search-input").performImeAction()
         app.onNodeWithText("没有找到相关作者").assertIsDisplayed()
         app.onNodeWithTag("main-circle").performClick()
         app.onNodeWithText("没有找到相关文章").assertIsDisplayed()
@@ -131,7 +134,7 @@ class OfflineFlowTest {
 
     @Test fun searchAndReaderSurviveActivityRecreation() {
         navigate("搜索")
-        app.onNodeWithTag("search-input").performTextInput("林间")
+        app.onNodeWithTag("search-input").performTextInput("林间");app.onNodeWithTag("search-input").performImeAction()
         app.onNodeWithTag("feed-search").performScrollToIndex(2)
         app.onNodeWithTag("article-slow").performClick()
         app.activityRule.scenario.recreate()

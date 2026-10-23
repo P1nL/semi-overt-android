@@ -11,6 +11,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.geometry.*
 import androidx.compose.ui.graphics.*
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.*
@@ -23,6 +25,15 @@ import androidx.compose.ui.unit.*
 import com.semiovert.app.R
 import com.semiovert.app.core.model.*
 import kotlin.math.abs
+
+/** Home supplies its background-decoded images during cold-start preparation. */
+internal val LocalPreparedArticleCovers=staticCompositionLocalOf<Map<Int,ImageBitmap>> {emptyMap()}
+
+@Composable
+internal fun articleCoverPainter(resource: Int): Painter {
+    val prepared=LocalPreparedArticleCovers.current[resource]
+    return if(prepared!=null)remember(prepared) {BitmapPainter(prepared)} else painterResource(resource)
+}
 
 fun articleCoverResource(article: Article,category: Boolean): Int {
     val cover=article.cover?:if(article.tone==CardTone.MINT)Cover.FOREST else Cover.ARCHITECTURE
@@ -66,6 +77,7 @@ fun CoverArticleCard(article: Article,selected: Boolean,modifier: Modifier,cover
     val readingTarget=if(shared&&exitRank!=null&&expansion?.active==true&&expansion.source?.article?.id!=article.id)
         SceneMotion.readingOffset(expansion.progress,exitRank,restingTop,screenHeight) else 0f
     val readingFollow by animateFloatAsState(readingTarget,SceneMotion.readingFollowerSpring(exitRank?:0),label="reading-list-"+article.id)
+    val coverPainter=articleCoverPainter(articleCoverResource(article,shortBottomBlur))
     Surface(modifier=modifier.then(click).onGloballyPositioned {
         bounds=it;restingTop=it.articleBoundsInRoot().top-readingFollow;expansion?.sourceReady(source())
     }.graphicsLayer {
@@ -75,7 +87,7 @@ fun CoverArticleCard(article: Article,selected: Boolean,modifier: Modifier,cover
         shape=RoundedCornerShape(18.dp,18.dp,if(squareBottom)0.dp else 18.dp,if(squareBottom)0.dp else 18.dp),
         border=BorderStroke(if(selected)1.dp else .5.dp,Color.White.copy(alpha=if(selected).28f else .12f)),shadowElevation=shadowElevation) {
         Box(Modifier.fillMaxSize()) {
-            Image(painterResource(articleCoverResource(article,shortBottomBlur)),null,contentScale=ContentScale.Crop,modifier=Modifier.fillMaxSize().testTag(coverTag))
+            Image(coverPainter,null,contentScale=ContentScale.Crop,modifier=Modifier.fillMaxSize().testTag(coverTag))
             Column(Modifier.align(if(topAligned)Alignment.TopStart else Alignment.BottomStart).fillMaxWidth().padding(start=18.dp,end=18.dp,top=if(handle)ArticleCardMetrics.STACK_TITLE_TOP_DP.dp else 18.dp,bottom=18.dp)) {
                 Text(article.title,style=MaterialTheme.typography.titleLarge.copy(fontFamily=FontFamily.SansSerif,fontSize=ArticleCardMetrics.TITLE_FONT_SP.sp,lineHeight=ArticleCardMetrics.TITLE_LINE_SP.sp,fontWeight=FontWeight.SemiBold,
                     shadow=if(lightCopy)Shadow.None else Shadow(Color.Black.copy(alpha=.22f),Offset(0f,1f),4f)),maxLines=3,overflow=TextOverflow.Ellipsis,

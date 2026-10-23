@@ -11,7 +11,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.dp
 
-enum class SoSymbol { HOME, CATEGORY, SEARCH, PERSON, ARROW, CLOSE, CONTENTS, CLOCK, APPEARANCE, CHEVRON, BOOK, SETTINGS }
+enum class SoSymbol { HOME, CATEGORY, SEARCH, PERSON, ARROW, CLOSE, CONTENTS, CLOCK, APPEARANCE, CHEVRON, BOOK, SETTINGS, CHECK }
 
 /** Original 24-unit stroke icons; no font glyphs or remote icon dependency. */
 @Composable
@@ -36,6 +36,7 @@ internal fun DrawScope.drawSoIcon(symbol: SoSymbol,tint: Color) {
                 SoSymbol.PERSON -> { drawCircle(tint,3.5f,Offset(12f,7f),style=stroke); drawArc(tint,180f,180f,false,Offset(4f,14f),Size(16f,13f),style=stroke) }
                 SoSymbol.ARROW -> { line(5f,12f,19f,12f); path(14f to 7f,19f to 12f,14f to 17f) }
                 SoSymbol.CLOSE -> { line(6f,6f,18f,18f); line(18f,6f,6f,18f) }
+                SoSymbol.CHECK -> path(5f to 12f,10f to 17f,19f to 7f)
                 SoSymbol.CONTENTS -> { for (y in listOf(6f,12f,18f)) { drawCircle(tint,1f,Offset(4f,y)); line(9f,y,20f,y) } }
                 SoSymbol.CLOCK -> { drawCircle(tint,8.5f,Offset(12f,12f),style=stroke); path(12f to 7f,12f to 12f,15f to 14f) }
                 SoSymbol.APPEARANCE -> { drawCircle(tint,4.3f,Offset(12f,12f),style=stroke); for (i in 0..7) { val angle = i * Math.PI / 4; line(12f+7f*kotlin.math.cos(angle).toFloat(),12f+7f*kotlin.math.sin(angle).toFloat(),12f+9f*kotlin.math.cos(angle).toFloat(),12f+9f*kotlin.math.sin(angle).toFloat()) } }

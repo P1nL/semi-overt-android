@@ -17,7 +17,10 @@ import com.semiovert.app.core.designsystem.*
 fun ContentStatesScreen(onBack: ()->Unit) {
     var selected by rememberSaveable {mutableStateOf("加载")}
     PageFrame("页面状态预览",onBack,"content-states-screen",scroll=false) {
-        LazyRow(horizontalArrangement=Arrangement.spacedBy(8.dp)) {items(listOf("加载","空内容","请求失败","内容不可见","文章不存在","已恢复")) {state ->FilterChip(selected=selected==state,onClick={selected=state},label={Text(state)})}}
+        LazyRow(horizontalArrangement=Arrangement.spacedBy(8.dp)) {items(listOf("加载","空内容","请求失败","内容不可见","文章不存在","已恢复")) {state ->
+            val spark=rememberSparkControl()
+            FilterChip(selected=selected==state,onClick={selected=state},label={Text(state)},interactionSource=spark.source,modifier=spark.modifier)
+        }}
         Crossfade(selected,modifier=Modifier.weight(1f).fillMaxWidth(),animationSpec=tween(motionMillis(SceneMotion.STATE_FADE_MS),easing=SoSceneEase),label="content-state") {state ->
         Column(Modifier.fillMaxSize(),verticalArrangement=Arrangement.Center,horizontalAlignment=Alignment.CenterHorizontally) {
             SoIcon(when(state){"加载"->SoSymbol.CLOCK;"请求失败","内容不可见"->SoSymbol.CLOSE;"文章不存在"->SoSymbol.SEARCH;else->SoSymbol.BOOK},

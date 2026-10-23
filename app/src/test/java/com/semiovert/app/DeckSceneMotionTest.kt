@@ -7,6 +7,10 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class DeckSceneMotionTest {
+    @Test fun categorySwapUsesFiveHundredAndFiftyMillisecondsPerPhase() {
+        assertEquals(550,SceneMotion.CATEGORY_SWAP_MS)
+    }
+
     @Test fun categoryEntranceKeepsASmallReboundInsideItsExistingWindow() {
         val travel=780f+24f-220f
         fun offset(p: Float,elastic: Boolean=true,phase: FlowPhase=FlowPhase.ENTER)=
@@ -15,7 +19,7 @@ class DeckSceneMotionTest {
         assertEquals(travel*.5f,offset(.5f),.01f)
         val lowest=(55..100).minOf {offset(it/100f)}
         assertTrue("Entrance gently passes its resting point",lowest< -1f)
-        assertTrue("Rebound stays subtle",lowest> -travel*.04f)
+        assertTrue("Softer rebound stays below one and a half percent of travel",lowest> -travel*.015f)
         assertEquals(0f,offset(1f),0f)
         for(frame in 0..20) {
             val p=frame/20f

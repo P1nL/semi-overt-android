@@ -16,7 +16,7 @@ import com.semiovert.app.R
 import com.semiovert.app.core.model.Cover
 import kotlin.math.roundToInt
 
-/** Shared by the opening identity and profile cover, rather than two similar effects. */
+/** The profile cover's tiled reveal; the opening avatar uses the web-aligned whole-image effect. */
 object PixelReveal {
     fun tileVisible(index: Int,progress: Float)=progress>0f&&((index*37%64)/64f)<=progress
     fun sample(progress: Float,count: Int)=(progress*count).toInt().coerceIn(0,(count-1).coerceAtLeast(0))

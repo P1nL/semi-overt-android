@@ -7,6 +7,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.dp
@@ -18,7 +19,8 @@ fun PageFrame(title: String,onBack: ()->Unit,tag: String,scroll: Boolean=true,ac
         val body=Modifier.fillMaxSize().then(if(scroll)Modifier.verticalScroll(rememberScrollState()) else Modifier).padding(start=24.dp,end=24.dp,top=64.dp)
         Column(body,content=content)
         Row(Modifier.align(Alignment.TopCenter).fillMaxWidth().heightIn(min=64.dp).padding(horizontal=12.dp),verticalAlignment=Alignment.CenterVertically) {
-            IconButton(onClick=onBack,modifier=Modifier.semantics {contentDescription="返回"}) {SoIcon(SoSymbol.ARROW,modifier=Modifier.graphicsLayer {rotationZ=180f})}
+            val backSpark=rememberSparkControl()
+            IconButton(onClick=onBack,interactionSource=backSpark.source,modifier=backSpark.modifier.semantics {contentDescription="返回"}) {SoIcon(SoSymbol.ARROW,modifier=Modifier.graphicsLayer {rotationZ=180f})}
             Text(title,style=MaterialTheme.typography.titleMedium,modifier=Modifier.weight(1f).semantics {heading()})
             actions?.invoke()
         }
@@ -31,10 +33,11 @@ fun DemoNotice(text: String="离线演示，不连接真实账号。请勿输入
 }
 
 @Composable
-fun ProfileAvatar(variant: Int=0,size: Int=56) {
-    Surface(shape=CircleShape,color=MaterialTheme.colorScheme.secondary,modifier=Modifier.size(size.dp)) {
+fun ProfileAvatar(variant: Int=0,size: Int=56,backgroundColor: Color=MaterialTheme.colorScheme.secondary,
+    contentColor: Color=MaterialTheme.colorScheme.onSecondary) {
+    Surface(shape=CircleShape,color=backgroundColor,modifier=Modifier.size(size.dp)) {
         // Shared-element bounds change every frame; scale the symbol with those bounds, not the final size argument.
-        Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center) {SoIcon(when(variant%3) {1->SoSymbol.BOOK;2->SoSymbol.HOME;else->SoSymbol.PERSON},modifier=Modifier.fillMaxSize(.48f),tint=MaterialTheme.colorScheme.onSecondary)}
+        Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center) {SoIcon(when(variant%3) {1->SoSymbol.BOOK;2->SoSymbol.HOME;else->SoSymbol.PERSON},modifier=Modifier.fillMaxSize(.48f),tint=contentColor)}
     }
 }
 
@@ -54,8 +57,9 @@ fun ConfirmationSheet(title: String,body: String,confirm: String="确定",onConf
             Text(title,style=MaterialTheme.typography.headlineSmall)
             Text(body,style=MaterialTheme.typography.bodyMedium,modifier=Modifier.padding(top=16.dp,bottom=24.dp))
             Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-                Button(onClick={close(onConfirm)},modifier=Modifier.weight(1f).heightIn(min=48.dp)) {Text(confirm)}
-                OutlinedButton(onClick={close {}},modifier=Modifier.weight(1f).heightIn(min=48.dp)) {Text("取消")}
+                val confirmSpark=rememberSparkControl();val cancelSpark=rememberSparkControl()
+                Button(onClick={close(onConfirm)},interactionSource=confirmSpark.source,modifier=Modifier.weight(1f).heightIn(min=48.dp).then(confirmSpark.modifier)) {Text(confirm)}
+                OutlinedButton(onClick={close {}},interactionSource=cancelSpark.source,modifier=Modifier.weight(1f).heightIn(min=48.dp).then(cancelSpark.modifier)) {Text("取消")}
             }
         }
     }

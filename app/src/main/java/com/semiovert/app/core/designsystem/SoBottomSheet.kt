@@ -83,6 +83,9 @@ fun SoBottomSheet(onDismissRequest: ()->Unit,content: @Composable ColumnScope.(D
     LaunchedEffect(Unit) {motionJob=scope.launch {progress.animateTo(1f,tween(duration,easing=SoSceneEase))}}
     Dialog(onDismissRequest={close {}},properties=DialogProperties(usePlatformDefaultWidth=false,
         decorFitsSystemWindows=false,dismissOnClickOutside=false)) {
+        // Dialogs have their own window; keep settings feedback above that window's scrim.
+        SparkFeedbackHost {
+        SparkFeedbackScope(LocalSparkFeedbackEnabled.current) {
         Box(Modifier.fillMaxSize().preferredFrameRate(MotionFramePolicy.TARGET_FPS).testTag("drawer-root")) {
             Box(Modifier.fillMaxSize().graphicsLayer {alpha=(progress.value-drag/sheetHeight).coerceIn(0f,1f)}
                 .background(Color.Black.copy(alpha=.32f))
@@ -108,6 +111,8 @@ fun SoBottomSheet(onDismissRequest: ()->Unit,content: @Composable ColumnScope.(D
                     }
                 }
             }
+        }
+        }
         }
     }
 }

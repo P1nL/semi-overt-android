@@ -47,12 +47,16 @@ private fun RouteSurface(edgeToEdge: Boolean=false,modifier: Modifier=Modifier,c
 }
 
 private const val SECONDARY_DEPTH_KEY="secondary-overlay-depth"
+private const val SPARK_FEEDBACK_KEY="settings-spark-feedback"
+private const val AUTHOR_AVATAR_ARRIVAL="author-avatar-arrival"
 
 private fun NavGraphBuilder.secondary(route: String,onBack: ()->Unit,canGoBack: ()->Boolean,
     arguments: List<NamedNavArgument> = emptyList(),edgeToEdge: Boolean=false,content: @Composable (NavBackStackEntry)->Unit) {
     composable(route,arguments=arguments) {entry ->RouteSurface(edgeToEdge,
         Modifier.secondaryPageOverlay(entry.savedStateHandle.get<Float>(SECONDARY_DEPTH_KEY)?:3f)) {
-        SwipeBackPage(canGoBack(),onBack) {content(entry)}
+        SparkFeedbackScope(entry.savedStateHandle.get<Boolean>(SPARK_FEEDBACK_KEY)==true) {
+            SwipeBackPage(canGoBack(),onBack) {content(entry)}
+        }
     }}
 }
 
@@ -67,6 +71,7 @@ fun AppNavigation(state: PreviewState,model: PreviewViewModel,onStatusBarAppeara
     var homeEntry by rememberSaveable {mutableIntStateOf(0)}
     var profileEntry by remember {mutableIntStateOf(0)}
     var handoff by remember {mutableStateOf<PageHandoff?>(null)}
+    var authorHandoff by remember {mutableStateOf<AuthorAvatarHandoff?>(null)}
     var navigating by remember {mutableStateOf(false)}
     val entry by controller.currentBackStackEntryAsState()
     LaunchedEffect(entry) {
@@ -79,8 +84,10 @@ fun AppNavigation(state: PreviewState,model: PreviewViewModel,onStatusBarAppeara
     val topRoutes=remember {Destination.entries.map {it.route}.toSet()}
     val navigate: (Destination)->Unit={target ->
         if(controller.currentDestination?.route!=target.route&&!navigating) {
+            val authorSource=controller.currentBackStackEntry?.takeIf {it.destination.route==ScreenRoutes.AUTHOR||it.destination.route=="reader/{articleId}"}
             focus.clearFocus();keyboard?.hide()
             navigating=true
+            authorHandoff=null
             handoff=PageHandoff.between(controller.currentDestination?.route,target.route,profileGuest=!state.signedIn)
             val leavingReader=controller.currentDestination?.route=="reader/{articleId}"
             if(leavingReader)controller.currentBackStackEntry?.savedStateHandle?.set(READER_PAGE_NAVIGATION_KEY,true)
@@ -96,15 +103,32 @@ fun AppNavigation(state: PreviewState,model: PreviewViewModel,onStatusBarAppeara
                 // Also normalize stacks saved before the detail-tail fix.
                 if(controller.currentDestination?.route!=target.route)controller.popBackStack(target.route,false)
             }
+            val authorId=authorSource?.arguments?.getString("authorId")
+                ?:authorSource?.arguments?.getString("articleId")?.let {SampleLibrary.article(it)?.author?.id}
+            val targetEntry=controller.currentBackStackEntry
+            if(authorSource!=null&&authorId!=null&&targetEntry!=null)authorHandoff=AuthorAvatarHandoff(authorId,authorSource.id,targetEntry.id,
+                maxOf(handoff?.identityMillis?:0,AvatarPixelMotion.DURATION_MILLIS),changesIdentity=true)
         }
     }
-    fun changeRoute(action: ()->Unit) {
+    fun changeRoute(restoringReaderCard: Boolean=false,visitingAuthor: String?=null,action: ()->Unit) {
         if(!navigating) {
             focus.clearFocus();keyboard?.hide()
             val previous=controller.currentBackStackEntry
             navigating=true
             action()
-            handoff=PageHandoff.between(previous?.destination?.route,controller.currentDestination?.route,profileGuest=!state.signedIn)
+            val target=controller.currentBackStackEntry
+            val returningAuthor=if(restoringReaderCard&&previous?.destination?.route==ScreenRoutes.AUTHOR&&
+                target?.destination?.route in listOf(Destination.SEARCH.route,"reader/{articleId}"))previous.arguments?.getString("authorId") else null
+            val authorId=visitingAuthor?:returningAuthor
+            authorHandoff=if(authorId!=null&&previous!=null&&target!=null&&previous!=target)
+                AuthorAvatarHandoff(authorId,previous.id,target.id,
+                    if(previous.destination.route=="reader/{articleId}"||target.destination.route=="reader/{articleId}")SceneMotion.READER_PAGE_EXIT_MS else SceneMotion.SEARCH_PRIMARY_MS)
+                else null
+            // System back already restores the exact card through ArticleExpansionState.
+            // Starting the destination's scene entrance as well moves that source card
+            // while the reverse reading overlay is trying to measure and return to it.
+            handoff=if(restoringReaderCard&&previous?.destination?.route=="reader/{articleId}")null
+                else PageHandoff.between(previous?.destination?.route,controller.currentDestination?.route,profileGuest=!state.signedIn)
             if(previous==controller.currentBackStackEntry)navigating=false
         }
     }
@@ -115,13 +139,15 @@ fun AppNavigation(state: PreviewState,model: PreviewViewModel,onStatusBarAppeara
             }
         }else {
             val depth=(controller.currentBackStackEntry?.savedStateHandle?.get<Float>(SECONDARY_DEPTH_KEY)?:2f)+1f
+            val sparks=destination==ScreenRoutes.SETTINGS||controller.currentBackStackEntry?.savedStateHandle?.get<Boolean>(SPARK_FEEDBACK_KEY)==true
             controller.navigate(destination){launchSingleTop=true}
             controller.currentBackStackEntry?.savedStateHandle?.set(SECONDARY_DEPTH_KEY,depth)
+            controller.currentBackStackEntry?.savedStateHandle?.set(SPARK_FEEDBACK_KEY,sparks)
         }
     }}
-    val back: ()->Unit={changeRoute {controller.popBackStack()}}
+    val back: ()->Unit={changeRoute(restoringReaderCard=true) {controller.popBackStack()}}
     val read: (String)->Unit={route("reader/"+it)}
-    fun visitAuthor(id: String,onReturn: ()->Unit={}) {changeRoute {
+    fun visitAuthor(id: String,onReturn: ()->Unit={}) {changeRoute(visitingAuthor=id) {
         val departing=controller.currentBackStackEntry
         // The route includes its author argument: another author's page is not a match.
         if(controller.popBackStack("author/"+id,false)) {
@@ -132,6 +158,7 @@ fun AppNavigation(state: PreviewState,model: PreviewViewModel,onStatusBarAppeara
             onReturn()
         }
         else controller.navigate("author/"+id){launchSingleTop=true}
+        controller.currentBackStackEntry?.savedStateHandle?.let {it[AUTHOR_AVATAR_ARRIVAL]=(it.get<Int>(AUTHOR_AVATAR_ARRIVAL)?:0)+1}
     }}
     val author: (String)->Unit={visitAuthor(it)}
     val profile: ()->Unit={route(Destination.PROFILE.route)}
@@ -153,6 +180,8 @@ fun AppNavigation(state: PreviewState,model: PreviewViewModel,onStatusBarAppeara
         LocalHomeSnapshot provides homeSnapshot,
         LocalHomeEntry provides homeEntry,
         LocalShortcuts provides ShortcutActions(state.shortcuts,model::shortcut,model::removeShortcut)) {
+        SparkFeedbackHost {
+        AuthorAvatarTransitionHost(authorHandoff) {
         DeckCounterHost(entry?.destination?.route,SampleLibrary.articles.size) {
         WaveDeckOverlayHost {
         ArticleExpansionHost {
@@ -161,30 +190,39 @@ fun AppNavigation(state: PreviewState,model: PreviewViewModel,onStatusBarAppeara
             if(navigating)awaitPointerEventScope {while(true)awaitPointerEvent(PointerEventPass.Initial).changes.forEach {it.consume()}}
         }, enterTransition={pageEnter(motion,profileGuest=!state.signedIn)},exitTransition={pageExit(motion,profileGuest=!state.signedIn)},
             popEnterTransition={pageEnter(motion,pop=true,profileGuest=!state.signedIn)},popExitTransition={pageExit(motion,pop=true,profileGuest=!state.signedIn)}) {
-            composable(Destination.HOME.route) {SceneMotionContent(Destination.HOME,handoff) {RouteSurface(edgeToEdge=true) {
+            composable(Destination.HOME.route) {homeRoute ->AuthorAvatarTransitionScene(this,homeRoute.id) {SceneMotionContent(Destination.HOME,handoff) {RouteSurface(edgeToEdge=true) {
                 HomeScreen(navigate,read,onToggleTheme={model.theme(if(dark)ThemeMode.LIGHT else ThemeMode.DARK)})
-            }}}
-            composable(Destination.CATEGORY.route) {SceneMotionContent(Destination.CATEGORY,handoff) {RouteSurface(edgeToEdge=true) {CategoryScreen(navigate,read)}}}
-            composable(Destination.SEARCH.route) {SceneMotionContent(Destination.SEARCH,handoff) {RouteSurface(edgeToEdge=true) {SearchScreen(navigate,read,author)}}}
-            composable(Destination.PROFILE.route) {SceneMotionContent(Destination.PROFILE,handoff) {RouteSurface(edgeToEdge=true) {
+            }}}}
+            composable(Destination.CATEGORY.route) {categoryRoute ->AuthorAvatarTransitionScene(this,categoryRoute.id) {
+                SceneMotionContent(Destination.CATEGORY,handoff) {RouteSurface(edgeToEdge=true) {CategoryScreen(navigate,read)}}
+            }}
+            composable(Destination.SEARCH.route) {searchEntry ->AuthorAvatarTransitionScene(this,searchEntry.id) {
+                SceneMotionContent(Destination.SEARCH,handoff) {RouteSurface(edgeToEdge=true) {SearchScreen(navigate,read,author)}}
+            }}
+            composable(Destination.PROFILE.route) {profileRoute ->AuthorAvatarTransitionScene(this,profileRoute.id) {SceneMotionContent(Destination.PROFILE,handoff) {RouteSurface(edgeToEdge=true) {
                 ProfileScreen(state,navigate,route,read,enterDemo,profileEntry)
-            }}}
+            }}}}
             composable("reader/{articleId}",arguments=listOf(navArgument("articleId"){type=NavType.StringType}),
                 enterTransition={EnterTransition.None},exitTransition={readerPageExit(motion)},popEnterTransition={EnterTransition.None},popExitTransition={readerPageExit(motion)}) {readerEntry ->
                 val expansion=LocalArticleExpansion.current
                 val origin=Destination.entries.find {it.route==controller.previousBackStackEntry?.destination?.route}?:Destination.PROFILE
+                AuthorAvatarTransitionScene(this,readerEntry.id) {
                 RouteSurface(edgeToEdge=true,modifier=Modifier.readerPageOverlay {
                     readerEntry.savedStateHandle.get<Boolean>(READER_PAGE_NAVIGATION_KEY)==true
                 }){ReaderScreen(back,{id->visitAuthor(id) {
                     expansion?.forgetLastOrigin(readerEntry.arguments?.getString("articleId").orEmpty())
                 }},navigate,origin)}
+                }
             }
             composable(ScreenRoutes.AUTHOR,arguments=listOf(navArgument("authorId"){type=NavType.StringType})) {authorEntry ->
+                val avatarArrival by authorEntry.savedStateHandle.getStateFlow(AUTHOR_AVATAR_ARRIVAL,0).collectAsState()
+                AuthorAvatarTransitionScene(this,authorEntry.id) {
                 SceneMotionContent(Destination.PROFILE,handoff) {RouteSurface(edgeToEdge=true) {
                     SwipeBackPage(canSwipeBack(),back) {
-                        AuthorScreen(authorEntry.arguments?.getString("authorId").orEmpty(),back,read,navigate)
+                        AuthorScreen(authorEntry.arguments?.getString("authorId").orEmpty(),back,read,navigate,avatarArrival)
                     }
                 }}
+                }
             }
             secondary(ScreenRoutes.REGISTER,back,canSwipeBack) {RegistrationScreen(profile,enterDemo)}
             secondary(ScreenRoutes.FORGOT,back,canSwipeBack) {ForgotPasswordScreen(profile)}
@@ -193,6 +231,8 @@ fun AppNavigation(state: PreviewState,model: PreviewViewModel,onStatusBarAppeara
             secondary(ScreenRoutes.NAV_POSITION,back,canSwipeBack,edgeToEdge=true) {NavigationPositionScreen(state.placement,back,{model.placement(it);back()})}
             secondary(ScreenRoutes.RECORDS,back,canSwipeBack) {RecordsScreen(state,back)}
             secondary(ScreenRoutes.STATES,back,canSwipeBack) {ContentStatesScreen(back)}
+        }
+        }
         }
         }
         }

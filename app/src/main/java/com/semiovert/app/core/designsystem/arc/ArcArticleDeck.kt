@@ -32,6 +32,7 @@ fun ArcArticleDeck(articles: List<Article>,selected: Int,onSelected: (Int)->Unit
     var position by rememberSaveable(ids) {mutableFloatStateOf(selected.toFloat())}
     var focusedPage by rememberSaveable(ids) {mutableIntStateOf(selected)}
     var expandedArticle by rememberSaveable(ids) {mutableStateOf<Int?>(null)}
+    var preparingExpansion by remember {mutableStateOf(false)}
     var dragging by remember {mutableStateOf(false)}
     var settling by remember {mutableStateOf(false)}
     var settleJob by remember {mutableStateOf<Job?>(null)}
@@ -51,18 +52,19 @@ fun ArcArticleDeck(articles: List<Article>,selected: Int,onSelected: (Int)->Unit
     fun show(index: Int): Boolean {
         if(!interactive||index !in articles.indices)return false
         settleJob?.cancel();dragging=false;settling=false
-        expandedArticle=null
+        expandedArticle=null;preparingExpansion=false
         position=index.toFloat();focusedPage=index;select(index)
         return true
     }
     LaunchedEffect(selected) {
         if(!dragging&&!settling&&ArcDeckMath.index(focusedPage,articles.size)!=selected) {
-            if(phase!=FlowPhase.EXIT){expandedArticle=null;position=selected.toFloat();focusedPage=selected}
+            if(phase!=FlowPhase.EXIT){expandedArticle=null;preparingExpansion=false;position=selected.toFloat();focusedPage=selected}
         }
     }
     LaunchedEffect(interactive) {
         if(!interactive) {
             settleJob?.cancel();dragging=false;settling=false
+            preparingExpansion=false
             if(expansion?.active!=true)expandedArticle=null
         }
     }
@@ -98,11 +100,12 @@ fun ArcArticleDeck(articles: List<Article>,selected: Int,onSelected: (Int)->Unit
         fun expand(article: Int) {
             if(!interactive||dragging)return
             settleJob?.cancel()
-            expandedArticle=null
+            expandedArticle=null;preparingExpansion=true
             val target=ArcDeckMath.pullPosition(article,position,articles.size,g,safeTop,safeBottom)
             if(abs(target-position)<.0001f) {
                 settling=false
                 expandedArticle=article
+                preparingExpansion=false
                 return
             }
             settling=true
@@ -113,19 +116,22 @@ fun ArcArticleDeck(articles: List<Article>,selected: Int,onSelected: (Int)->Unit
                     move(target)
                     select(ArcDeckMath.index(focusedPage,articles.size))
                     expandedArticle=article
-                } finally {if(isActive)settling=false}
+                } finally {if(isActive){settling=false;preparingExpansion=false}}
             }
         }
         Box(Modifier.fillMaxSize().testTag("home-arc")
             .draggable(
                 state=rememberDraggableState {delta ->move(position-delta/stepPx)},
                 orientation=Orientation.Vertical,enabled=interactive,startDragImmediately=settling,
-                onDragStarted={settleJob?.cancel();expandedArticle=null;settling=false;dragging=true},
+                onDragStarted={settleJob?.cancel();expandedArticle=null;preparingExpansion=false;settling=false;dragging=true},
                 onDragStopped={velocity ->
                     dragging=false
                     settleTo(ArcDeckMath.target(position,velocity,stepPx),ArcDeckMotion.releaseVelocity(velocity,stepPx))
                 },
             )) {
+            ArcAuthorAvatar(articles[focused].author,articles[focused].id,position,dragging,settling,
+                enabled=interactive&&expandedArticle==null&&!preparingExpansion,geometry=g,
+                modifier=Modifier.zIndex(-ArcDeckMath.VISIBLE_DISTANCE-2f))
             for(pose in ArcDeckMath.frames(articles.size,position,g)) {
                 val path=ArcDeckMath.scenePose(pose,g,roll,phase)
                 val start=exitFrames[pose.article]
@@ -140,6 +146,15 @@ fun ArcArticleDeck(articles: List<Article>,selected: Int,onSelected: (Int)->Unit
                 val pull=animateFloatAsState(targetValue=if(active&&(interactive||expansion?.active==true))1f else 0f,
                     animationSpec=ArcDeckMotion.followSpec(),label="arc-pull-"+article.id)
                 val amount=if(phase==FlowPhase.EXIT)0f else pull.value
+                // Resolve once when lifting starts, not every frame of the lift or return.
+                val avatarPlacement=remember(active,g,safeTop,safeBottom) {
+                    if(active)ArcAuthorAvatarMotion.expandedPlacement(g,
+                        pose.centerY-ArcDeckMath.pullLift(pose.distance,g)-g.cardHeight/2f,safeTop,safeBottom) else null
+                }
+                ArcExpandedAuthorAvatar(article.author,avatarPlacement,
+                    visible=active&&interactive&&amount>=ArcAuthorAvatarMotion.EXPANDED_REVEAL_PROGRESS,
+                    tag="home-expanded-author-"+article.id,
+                    modifier=Modifier.zIndex(-ArcDeckMath.VISIBLE_DISTANCE-2f))
                 val lift=ArcDeckMath.pullLift(pose.distance,g)*amount
                 val shiftX=(ArcDeckMath.pulledLeft(g)+g.cardWidth/2f-moving.centerX)*amount
                 val tilt=animateFloatAsState(targetValue=if(interactive||expansion?.active==true)ArcDeckMath.neighbourTilt(relativePage) else 0f,

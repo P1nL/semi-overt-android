@@ -14,7 +14,6 @@ import androidx.compose.ui.graphics.*
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.*
 import androidx.compose.ui.platform.*
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.*
 import androidx.compose.ui.text.font.*
@@ -75,7 +74,7 @@ private fun ExpansionOverlay(source: ArticleSource,state: ArticleExpansionState,
                 bottomEnd=(if(source.origin==ArticleOrigin.HOME)18f*(1f-container) else 0f).dp),
             shadowElevation=((if(source.origin==ArticleOrigin.HOME)10f else 2f)*(1f-container)).dp,
             color=MaterialTheme.colorScheme.background.copy(alpha=if(source.origin==ArticleOrigin.HOME)SceneMotion.homeReadingFade(p) else SceneMotion.readingBody(p))) {
-            Image(painterResource(articleCoverResource(source.article,source.origin==ArticleOrigin.STACK)),null,contentScale=ContentScale.Crop,
+            Image(articleCoverPainter(articleCoverResource(source.article,source.origin==ArticleOrigin.STACK)),null,contentScale=ContentScale.Crop,
                 modifier=Modifier.fillMaxSize().graphicsLayer {alpha=1f-SceneMotion.segment(p,.70f,.90f)})
         }
         ReaderArticleLayout(source.article,rememberLazyListState(),{},anchors,

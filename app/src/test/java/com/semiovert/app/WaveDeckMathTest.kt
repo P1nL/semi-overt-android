@@ -6,6 +6,37 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class WaveDeckMathTest {
+    @Test fun leftStaggerUsesThePageLimitRatherThanTheLoadedArticleCount() {
+        for(limit in listOf(WaveDeckMath.CATEGORY_VISIBLE,WaveDeckMath.SEARCH_VISIBLE,WaveDeckMath.PROFILE_VISIBLE)) {
+            val g=WaveDeckMath.embeddedGeometry(411f,750f,11,900f,visibleLimit=limit)
+            val full=WaveDeckMath.frames(11,0f,g,limit)
+            val short=WaveDeckMath.frames(3,0f,g,limit)
+            assertEquals(g.width/2f,full.first().centerX,.001f)
+            for(i in short.indices)assertEquals(full[i].centerX,short[i].centerX,.001f)
+            for(i in 1 until full.size) {
+                val step=full[i-1].centerX-full[i].centerX
+                assertTrue("Rear cards expose a slim left edge",step>0f&&step<=3.001f)
+            }
+        }
+    }
+
+    @Test fun staggerStaysInsideTheMarginAndContinuousAcrossQueueChanges() {
+        for(width in listOf(320f,411f))for(count in listOf(1,4,11))for(limit in listOf(5,6,7)) {
+            val g=WaveDeckMath.embeddedGeometry(width,750f,count,900f,visibleLimit=limit)
+            for(position in listOf(-.05f,0f,.5f,.95f,1f)) {
+                val poses=WaveDeckMath.frames(count,position,g,limit)
+                assertTrue("Keep at least 8dp of left inset",poses.all {it.centerX-g.cardSize/2f>=7.999f})
+                assertTrue("Outgoing cards retain their centered path",poses.filter {it.outgoing}.all {it.centerX==width/2f})
+            }
+            val before=WaveDeckMath.frames(count,.9999f,g,limit)
+            val after=WaveDeckMath.frames(count,1f,g,limit)
+            for(pose in after) {
+                val previous=before.single {it.article==pose.article}
+                assertEquals("No horizontal jump at the queue seam",previous.centerX,pose.centerX,.01f)
+            }
+        }
+    }
+
     @Test fun categoryAndSearchCounterKeepTheSameScreenHeight() {
         for(statusTop in listOf(24f,32f)) {
             val category=DeckCounterLayout.localTop(statusTop,false)

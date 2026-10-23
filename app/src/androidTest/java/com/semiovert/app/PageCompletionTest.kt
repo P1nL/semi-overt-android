@@ -79,7 +79,8 @@ class PageCompletionTest {
         app.onNodeWithText("尚未登录").assertDoesNotExist()
         app.onNodeWithContentDescription("返回").assertDoesNotExist()
         settings()
-        app.onNodeWithText("进入登录页").performScrollTo().performClick()
+        app.onNodeWithText("进入登录页").assertDoesNotExist()
+        app.onNodeWithContentDescription("返回").performClick()
         app.onNodeWithTag("settings-screen").assertDoesNotExist()
         app.onNodeWithTag("profile-guest").assertIsDisplayed()
         app.onNodeWithText("填入示例资料").performScrollTo().performClick()
@@ -162,7 +163,7 @@ class PageCompletionTest {
 
     @Test fun authorPagesAreReadOnlyAndReturnToSearch() {
         navigate("搜索")
-        app.onNodeWithTag("search-input").performTextInput("街角")
+        app.onNodeWithTag("search-input").performTextInput("街角");app.onNodeWithTag("search-input").performImeAction()
         Espresso.closeSoftKeyboard()
         app.onNodeWithTag("main-circle").performClick()
         app.onNodeWithTag("author-zhou").performClick()
@@ -186,7 +187,7 @@ class PageCompletionTest {
         app.onNodeWithTag("position-preview").performTouchInput {
             down(center);moveBy(Offset(-1000f,0f),delayMillis=400);up()
         }
-        app.onNodeWithText("保存位置").performClick()
+        app.onNodeWithContentDescription("保存位置").performClick()
         back()
         assertTrue(app.onNodeWithTag("main-circle").getUnclippedBoundsInRoot().left.value<60f)
         val density=app.activity.resources.displayMetrics.density

@@ -51,12 +51,13 @@ fun RecordCalendar(authorId: String,owner: Boolean,snapshots: Boolean,cleared: B
         if(selectedDay>0)dateBounds[selectedDay]?.let {highlightTarget=it.translate(-gridOrigin)}
     }
     Row(Modifier.fillMaxWidth().padding(top=24.dp,bottom=12.dp).drawWithContent {clipRect(right=size.width*textProgress.coerceIn(0f,1f)){this@drawWithContent.drawContent()}},verticalAlignment=Alignment.CenterVertically) {
-        TextButton(onClick={expanded=!expanded},contentPadding=PaddingValues(0.dp),modifier=Modifier.heightIn(min=48.dp).testTag("records-expand")) {
+        val expandSpark=rememberSparkControl();val monthSpark=rememberSparkControl()
+        TextButton(onClick={expanded=!expanded},interactionSource=expandSpark.source,contentPadding=PaddingValues(0.dp),modifier=Modifier.heightIn(min=48.dp).then(expandSpark.modifier).testTag("records-expand")) {
             Text("记录",style=MaterialTheme.typography.labelLarge,color=MaterialTheme.colorScheme.onSurface)
             SoIcon(SoSymbol.CHEVRON,modifier=Modifier.padding(start=4.dp).size(16.dp).graphicsLayer {rotationZ=arrow})
         }
         Spacer(Modifier.weight(1f))
-        TextButton(onClick={monthPicker=true},modifier=Modifier.testTag("records-month")) {Text(month.toString().replace('-','.'),style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)}
+        TextButton(onClick={monthPicker=true},interactionSource=monthSpark.source,modifier=monthSpark.modifier.testTag("records-month")) {Text(month.toString().replace('-','.'),style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)}
     }
     AnimatedVisibility(expanded,enter=expandVertically(tween(duration,easing=SoSceneEase))+fadeIn(tween(duration)),exit=shrinkVertically(tween(duration,easing=SoSceneEase))+fadeOut(tween(duration))) {
     Column {
@@ -79,7 +80,7 @@ fun RecordCalendar(authorId: String,owner: Boolean,snapshots: Boolean,cleared: B
                     else {
                         val hasRecords=records.any {it.date==month.atDay(day)}
                         Box(Modifier.weight(1f).height(48.dp)
-                            .clickable(remember {MutableInteractionSource()},indication=null) {selectedDay=if(selectedDay==day)0 else day}.semantics {contentDescription=month.year.toString()+"年"+month.monthValue+"月"+day+"日";selected=day==selectedDay}
+                            .clickable(remember {MutableInteractionSource()},indication=if(LocalSparkFeedbackEnabled.current)LocalIndication.current else null) {selectedDay=if(selectedDay==day)0 else day}.semantics {contentDescription=month.year.toString()+"年"+month.monthValue+"月"+day+"日";selected=day==selectedDay}
                             .onGloballyPositioned {dateBounds[day]=it.boundsInRoot()}.testTag("record-day-"+day),contentAlignment=Alignment.Center) {
                             Text(day.toString(),style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurface)
                             if(hasRecords) Box(Modifier.align(Alignment.BottomCenter).padding(bottom=5.dp).size(4.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary))
@@ -104,12 +105,13 @@ fun RecordCalendar(authorId: String,owner: Boolean,snapshots: Boolean,cleared: B
                     val selectedRecords=records.filter {it.date==date}
                     Row(verticalAlignment=Alignment.CenterVertically) {
                         Text(date.monthValue.toString()+" 月 "+date.dayOfMonth+" 日",style=MaterialTheme.typography.titleMedium,modifier=Modifier.weight(1f))
-                        Box(Modifier.size(48.dp).clickable(remember {MutableInteractionSource()},indication=null) {selectedDay=0},contentAlignment=Alignment.Center) {SoIcon(SoSymbol.CLOSE,"关闭日期详情")}
+                        Box(Modifier.size(48.dp).clickable(remember {MutableInteractionSource()},indication=if(LocalSparkFeedbackEnabled.current)LocalIndication.current else null) {selectedDay=0},contentAlignment=Alignment.Center) {SoIcon(SoSymbol.CLOSE,"关闭日期详情")}
                     }
                     if(selectedRecords.isEmpty())Text("这一天没有示例记录",style=MaterialTheme.typography.bodyMedium)
                     else if(owner&&snapshots&&!cleared) {
                         selectedRecords.forEach {record ->
-                            TextButton(onClick={diffId=record.articleId},modifier=Modifier.fillMaxWidth().testTag("record-diff-"+record.articleId)) {
+                            val spark=rememberSparkControl()
+                            TextButton(onClick={diffId=record.articleId},interactionSource=spark.source,modifier=Modifier.fillMaxWidth().then(spark.modifier).testTag("record-diff-"+record.articleId)) {
                                 Column(Modifier.weight(1f)) {
                                     Text(SampleLibrary.article(record.articleId)!!.title,style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurface)
                                     Text("示例新增 +"+record.added+" · 删减 −"+record.removed,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.padding(top=6.dp))
@@ -152,15 +154,22 @@ private fun MonthPicker(initial: YearMonth,onApply: (YearMonth)->Unit,onDismiss:
         Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(20.dp)) {
             Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
                 Text("选择年月",style=MaterialTheme.typography.titleMedium,modifier=Modifier.weight(1f))
-                TextButton(onClick={close {onApply(YearMonth.of(year,month))}}) {Text("确定")}
-                TextButton(onClick={close {}},modifier=Modifier.testTag("month-cancel")) {Text("取消")}
+                val applySpark=rememberSparkControl();val cancelSpark=rememberSparkControl()
+                TextButton(onClick={close {onApply(YearMonth.of(year,month))}},interactionSource=applySpark.source,modifier=applySpark.modifier) {Text("确定")}
+                TextButton(onClick={close {}},interactionSource=cancelSpark.source,modifier=cancelSpark.modifier.testTag("month-cancel")) {Text("取消")}
             }
             Row(Modifier.fillMaxWidth().height(240.dp),horizontalArrangement=Arrangement.spacedBy(20.dp)) {
                 LazyColumn(state=rememberLazyListState((initial.year-2021).coerceAtLeast(0)),modifier=Modifier.weight(1f)) {
-                    items((2021..2031).toList()) {value -> TextButton(onClick={year=value},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).semantics {selected=value==year}) {Text(value.toString()+" 年",color=if(value==year)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)}}
+                    items((2021..2031).toList()) {value ->
+                        val spark=rememberSparkControl()
+                        TextButton(onClick={year=value},interactionSource=spark.source,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).then(spark.modifier).semantics {selected=value==year}) {Text(value.toString()+" 年",color=if(value==year)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)}
+                    }
                 }
                 LazyColumn(state=rememberLazyListState((initial.monthValue-3).coerceAtLeast(0)),modifier=Modifier.weight(1f)) {
-                    items((1..12).toList()) {value -> TextButton(onClick={month=value},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).semantics {selected=value==month}) {Text(value.toString()+" 月",color=if(value==month)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)}}
+                    items((1..12).toList()) {value ->
+                        val spark=rememberSparkControl()
+                        TextButton(onClick={month=value},interactionSource=spark.source,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).then(spark.modifier).semantics {selected=value==month}) {Text(value.toString()+" 月",color=if(value==month)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)}
+                    }
                 }
             }
         }

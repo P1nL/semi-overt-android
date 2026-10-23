@@ -20,6 +20,7 @@ class AuthorReaderNavigationTest {
     }
     private fun openAuthor() {
         navigate("搜索")
+        app.onNodeWithTag("search-input").performTextInput("街角");app.onNodeWithTag("search-input").performImeAction()
         app.onNodeWithTag("main-circle").performClick()
         app.onNodeWithTag("author-zhou").performClick()
     }
@@ -31,6 +32,47 @@ class AuthorReaderNavigationTest {
     private fun visitAuthor() {
         app.onNodeWithText("街角观察员").performClick()
         app.onNodeWithTag("author-screen").assertIsDisplayed()
+    }
+
+    private fun nestedReadingReturnsToTheOriginalStack(page: String,deck: String) {
+        navigate(page)
+        if(page=="搜索") {
+            app.onNodeWithTag("search-input").performTextInput("林间");app.onNodeWithTag("search-input").performImeAction()
+            Espresso.closeSoftKeyboard();app.waitForIdle()
+        }
+        val original=app.onNodeWithTag("wave-card-forest",useUnmergedTree=true).getUnclippedBoundsInRoot()
+        app.onNodeWithTag("article-forest").performClick()
+        app.onNodeWithText("林间来信").performClick()
+        app.onNodeWithTag("author-profile-feed").performScrollToNode(hasTestTag("author-articles"))
+        app.onNodeWithTag("article-forest").performClick()
+        app.onNodeWithTag("reader-screen").assertIsDisplayed()
+        app.onNodeWithText("林间来信").performClick()
+        app.onNodeWithTag("author-screen").assertIsDisplayed()
+        Espresso.pressBack();app.waitForIdle()
+        app.onNodeWithTag("reader-title").assertTextEquals("林间雾起的时候")
+        app.mainClock.autoAdvance=false
+        try {
+            Espresso.pressBack();app.mainClock.advanceTimeBy(200)
+            app.onNodeWithTag("reading-expansion").assertExists()
+            val returning=app.onNodeWithTag("wave-card-forest",useUnmergedTree=true).getUnclippedBoundsInRoot()
+            assertEquals("The original deck must not replay page entrance under the reverse reading animation",
+                original.top.value,returning.top.value,.5f)
+            assertEquals(original.left.value,returning.left.value,.5f)
+        } finally {app.mainClock.autoAdvance=true;app.waitForIdle()}
+        app.onNodeWithTag(deck).assertIsDisplayed()
+        app.onNodeWithTag("reading-expansion").assertDoesNotExist()
+        app.onNodeWithTag("reader-screen").assertDoesNotExist()
+        val restored=app.onNodeWithTag("wave-card-forest",useUnmergedTree=true).getUnclippedBoundsInRoot()
+        assertEquals(original.top.value,restored.top.value,.5f)
+        if(page=="搜索")app.onNodeWithTag("search-input").assertTextContains("林间")
+    }
+
+    @Test fun nestedAuthorReadingReturnsToCategoryWithoutReplayingTheCardQueue() {
+        nestedReadingReturnsToTheOriginalStack("分类","category-wave")
+    }
+
+    @Test fun nestedAuthorReadingReturnsToSearchWithoutReplayingTheCardQueue() {
+        nestedReadingReturnsToTheOriginalStack("搜索","search-wave")
     }
 
     @Test fun returningToTheExistingAuthorReusesTheFourHundredMillisecondReaderExit() {

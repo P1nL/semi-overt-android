@@ -6,6 +6,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toPixelMap
@@ -22,6 +23,8 @@ import androidx.test.platform.app.InstrumentationRegistry
 import android.app.Application
 import com.semiovert.app.core.data.PreviewViewModel
 import com.semiovert.app.core.model.PreviewState
+import com.semiovert.app.core.model.ThemeMode
+import com.semiovert.app.feature.profile.ProfileScreen
 import com.semiovert.app.core.designsystem.*
 import com.semiovert.app.navigation.*
 import org.junit.Assert.*
@@ -33,6 +36,77 @@ import kotlin.math.min
 
 class IdentityTransitionTest {
     @get:Rule val app=createComposeRule()
+
+    @Test fun guestLoginAvatarTravelsSeparatelyWhileTheFormSlidesIn() {
+        lateinit var nav: NavHostController
+        var handoff by mutableStateOf<PageHandoff?>(null)
+        app.setContent {
+            SoTheme(ThemeMode.LIGHT) {
+                CompositionLocalProvider(LocalIdentity provides remember {IdentityAnchor(false,0)},LocalMotionEnabled provides true) {
+                    IdentityTransitionHost {
+                        nav=rememberNavController()
+                        NavHost(nav,Destination.HOME.route,
+                            enterTransition={pageEnter(true,profileGuest=true)},exitTransition={pageExit(true,profileGuest=true)}) {
+                            composable(Destination.HOME.route) {
+                                SceneMotionContent(Destination.HOME,handoff) {
+                                    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(start=24.dp,top=30.dp)) {
+                                        IdentityAvatar(Modifier.testTag("guest-source"),size=56)
+                                    }
+                                }
+                            }
+                            composable(Destination.PROFILE.route) {
+                                SceneMotionContent(Destination.PROFILE,handoff) {
+                                    ProfileScreen(PreviewState(signedIn=false),{},{},{},{})
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        app.waitForIdle()
+        val sourceImage=app.onRoot().captureToImage()
+        app.mainClock.autoAdvance=false
+        try {
+            val next=PageHandoff(Destination.HOME,Destination.PROFILE,profileGuest=true)
+            app.runOnIdle {handoff=next;nav.navigate(Destination.PROFILE.route)}
+            app.mainClock.advanceTimeBy(200)
+            val target=app.onNodeWithTag("login-shared-avatar",useUnmergedTree=true).fetchSemanticsNode().boundsInRoot
+            // Inspect rendered ink above the form, excluding the settings button at the right edge.
+            fun inkBounds(image: ImageBitmap): Rect {
+                val pixels=image.toPixelMap()
+                var left=pixels.width;var top=pixels.height;var right=-1;var bottom=-1
+                for(y in 0 until min(pixels.height,(target.bottom+2).toInt()))
+                    for(x in 0 until min(pixels.width,(target.right+8).toInt())) {
+                        val c=pixels[x,y]
+                        if(c.red<.15f&&c.green<.15f&&c.blue<.15f) {
+                            left=min(left,x);top=min(top,y);right=max(right,x);bottom=max(bottom,y)
+                        }
+                    }
+                assertTrue("The moving guest icon stays visible",right>=left&&bottom>=top)
+                return Rect(left.toFloat(),top.toFloat(),(right+1).toFloat(),(bottom+1).toFloat())
+            }
+            val start=inkBounds(sourceImage)
+            val middle=inkBounds(app.onRoot().captureToImage())
+            assertTrue("Icon moves before the form's delayed entrance",middle.center.y>start.center.y+2f)
+            assertTrue("Icon is not carried in from the right with the form",middle.center.x>start.center.x&&middle.center.x<target.center.x)
+            assertTrue("One continuously scaling icon, not separate source and target copies",middle.width>start.width&&middle.width<target.width+2f)
+            app.mainClock.advanceTimeBy(next.enterDelayMillis+SceneMotion.PROFILE_GUEST_MS/2L-200)
+            val slidingLeft=app.onNodeWithTag("login-screen").fetchSemanticsNode().boundsInRoot.left
+            app.mainClock.advanceTimeBy(next.totalMillis.toLong()+100)
+            val end=inkBounds(app.onRoot().captureToImage())
+            val settledLeft=app.onNodeWithTag("login-screen").fetchSemanticsNode().boundsInRoot.left
+            assertTrue("The form still enters from the right",slidingLeft>settledLeft+10f)
+            assertEquals(target.center.x,end.center.x,2f)
+            val back=PageHandoff(Destination.PROFILE,Destination.HOME,profileGuest=true)
+            app.runOnIdle {handoff=back;nav.popBackStack()}
+            app.mainClock.advanceTimeBy(200)
+            val returning=inkBounds(app.onRoot().captureToImage())
+            assertTrue("Return uses the same independent avatar path",returning.center.y>start.center.y&&returning.center.y<end.center.y)
+            assertTrue("Return scales the whole icon continuously",returning.width>start.width&&returning.width<end.width)
+            app.mainClock.advanceTimeBy(back.totalMillis.toLong()+100)
+        } finally {app.mainClock.autoAdvance=true}
+    }
 
     /** Read the actual overlay pixels, not the destination's lookahead/semantics bounds. */
     private fun avatarBounds(image: ImageBitmap=app.onRoot().captureToImage(),symbol: Boolean=false): Rect {

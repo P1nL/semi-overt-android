@@ -42,7 +42,8 @@ internal fun PasswordToggleButton(visible: Boolean,onVisibleChange: (Boolean)->U
     }
     val ink=MaterialTheme.colorScheme.onSurfaceVariant
     val glint=MaterialTheme.colorScheme.background
-    IconToggleButton(checked=visible,onCheckedChange=onVisibleChange,modifier=modifier.size(48.dp)
+    val spark=com.semiovert.app.core.designsystem.rememberSparkControl()
+    IconToggleButton(checked=visible,onCheckedChange=onVisibleChange,interactionSource=spark.source,modifier=modifier.size(48.dp).then(spark.modifier)
         .clip(RoundedCornerShape(12.dp)).semantics {contentDescription=if(visible)"隐藏密码" else "显示密码"}) {
         Canvas(Modifier.size(24.dp)) {
             scale(size.width/24f,size.height/24f,pivot=Offset.Zero) {

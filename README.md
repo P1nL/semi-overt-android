@@ -40,6 +40,21 @@
 .\gradlew.bat :app:connectedDebugAndroidTest
 ~~~
 
+### 启动和动效体验
+
+体验启动速度时使用 `preview`，不要用调试器或 Debug 包判断最终的等待时间：
+
+~~~powershell
+.\gradlew.bat :app:assemblePreview
+# 安装到已连接的设备；与本机 debug 签名一致，可覆盖安装并保留数据
+adb install -r app/build/outputs/apk/preview/app-preview.apk
+~~~
+
+Android Studio 可在 Build Variants 中选择 `preview` 后正常 Run（不是 Debug）。
+该构建继承 Release 的完整代码 / 资源优化，关闭调试开销，使用本机 debug 密钥签名；
+只用于本地体验和性能核对，不是正式发布签名。`debug` 仍用于断点和自动化测试。
+启动图片和示例数据在 Activity 创建时后台准备，动画各段时长不因构建类型改变。
+
 ## 源码
 
 单 app 模块，包根 com.semiovert.app：navigation 管理页面与返回栈；

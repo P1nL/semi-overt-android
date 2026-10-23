@@ -47,8 +47,8 @@ fun ReaderArticleLayout(article: Article,list: LazyListState,onAuthor: (String)-
                     .then(hidden).testTag(if(anchors==null)"reader-title" else "reader-title-target").semantics {heading()})
             }
             item("author") {
-                Row(Modifier.clickable(enabled=anchors==null,onClickLabel="查看作者主页"){onAuthor(article.author.id)}.padding(top=18.dp,bottom=22.dp),verticalAlignment=Alignment.CenterVertically) {
-                    SoIcon(SoSymbol.PERSON,tint=MaterialTheme.colorScheme.primary,modifier=Modifier.graphicsLayer {alpha=avatarProgress})
+                Row(Modifier.sparkClickable(enabled=anchors==null,onClickLabel="查看作者主页"){onAuthor(article.author.id)}.padding(top=18.dp,bottom=22.dp),verticalAlignment=Alignment.CenterVertically) {
+                    AuthorAvatar(article.author.id,size=24,shared=anchors==null,modifier=Modifier.graphicsLayer {alpha=avatarProgress})
                     Column(Modifier.padding(start=10.dp)) {
                         Text(article.author.name,style=MaterialTheme.typography.labelLarge,modifier=Modifier.onGloballyPositioned {anchors?.author=it.boundsInRoot()}.then(hidden))
                         Row {

@@ -22,7 +22,7 @@ object SceneMotion {
     const val SEARCH_STAGGER_MS = 150
     const val SEARCH_ENTER_MS = SEARCH_PRIMARY_MS + SEARCH_STAGGER_MS
     const val SEARCH_EXIT_MS = SEARCH_ENTER_MS
-    const val CATEGORY_SWAP_MS = 420
+    const val CATEGORY_SWAP_MS = 550
     const val DRAWER_MS = 400
     const val READER_PAGE_EXIT_MS = 400
     const val STATE_FADE_MS = 300
@@ -74,7 +74,7 @@ object SceneMotion {
         if(phase==FlowPhase.EXIT)return travel*SoSceneEase.transform(p)
         // A short, smooth settling tail stays inside the original one-second card window.
         val tail=sin(PI.toFloat()*segment(p,.55f,1f))
-        val inertia=if(elasticEntrance).085f*tail*tail else 0f
+        val inertia=if(elasticEntrance).070f*tail*tail else 0f
         return travel*(1f-SoSceneEase.transform(p)-inertia)
     }
     fun readingOffset(progress: Float,rank: Int,top: Float,height: Float): Float {

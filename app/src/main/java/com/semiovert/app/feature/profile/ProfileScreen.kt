@@ -51,13 +51,19 @@ fun ProfileScreen(state: PreviewState,onNavigate: (Destination)->Unit,onRoute: (
                     if(targetState)slideOutVertically(tween(if(motion)ACCOUNT_SUCCESS_EXIT_MS else 0,easing=SoSceneEase)){it} else ExitTransition.None,
                     targetContentZIndex=if(targetState)-1f else 0f,sizeTransform=null)
             }) {signedIn ->
-            if(!signedIn)Surface(Modifier.fillMaxSize()
-                .graphicsLayer {translationX=size.width*(1f-SoSceneEase.transform(progress))}.testTag("profile-guest"),color=MaterialTheme.colorScheme.background) {
+            if(!signedIn)BoxWithConstraints(Modifier.fillMaxSize().testTag("profile-guest")) {
+            val slideWidth=constraints.maxWidth.toFloat()
+            val slide=Modifier.graphicsLayer {translationX=slideWidth*(1f-SoSceneEase.transform(progress))}
+            Surface(Modifier.matchParentSize().then(slide),color=MaterialTheme.colorScheme.background) {}
             Column(Modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState())
                 .padding(start=24.dp,end=24.dp,top=top+96.dp,bottom=128.dp),horizontalAlignment=Alignment.CenterHorizontally) {
-                IdentityAvatar(size=80,registerAnchor=false)
+                // A fixed endpoint lets the shared avatar travel independently of the form.
+                // After login, the incoming profile owns the identity while this sheet exits.
+                IdentityAvatar(Modifier.testTag("login-shared-avatar"),size=80,registerAnchor=!state.signedIn)
                 Spacer(Modifier.height(20.dp))
+                Box(Modifier.fillMaxWidth().then(slide)) {
                 AccountForm(false,{onRoute(ScreenRoutes.REGISTER)},{onRoute(ScreenRoutes.FORGOT)},onEnterDemo)
+                }
             }
             }else ProfileFeed(state.profile,"lin",true,state.snapshots,state.snapshotsCleared,onArticle,
                 {onRoute(ScreenRoutes.EDIT_PROFILE)},progress)
@@ -68,9 +74,15 @@ fun ProfileScreen(state: PreviewState,onNavigate: (Destination)->Unit,onRoute: (
 
 @Composable
 private fun ProfileFeed(profile: PreviewProfile,authorId: String,owner: Boolean,snapshots: Boolean,cleared: Boolean,onArticle: (String)->Unit,
-    onEdit: ()->Unit={},progress: Float=1f) {
+    onEdit: ()->Unit={},progress: Float=1f,authorArrival: Int=0) {
     val articles=remember(authorId){SampleLibrary.articles.filter {it.author.id==authorId}}
     val list=rememberLazyListState()
+    var handledArrival by rememberSaveable(authorId) {mutableIntStateOf(0)}
+    LaunchedEffect(authorArrival) {
+        if(!owner&&authorArrival!=handledArrival) {
+            list.scrollToItem(0);handledArrival=authorArrival
+        }
+    }
     var selected by rememberSaveable(authorId){mutableIntStateOf(0)}
     val articleList=rememberLazyListState()
     val motion=LocalMotionEnabled.current
@@ -100,7 +112,7 @@ private fun ProfileFeed(profile: PreviewProfile,authorId: String,owner: Boolean,
                 }
                 Box(Modifier.align(Alignment.TopStart).padding(20.dp).size(76.dp)) {
                     if(owner)IdentityAvatar(Modifier.testTag("profile-shared-avatar"),size=76)
-                    else ProfileAvatar(profile.avatar,76)
+                    else AuthorAvatar(authorId,size=76)
                 }
             }
     }
@@ -148,14 +160,14 @@ private fun ProfileFeed(profile: PreviewProfile,authorId: String,owner: Boolean,
 }
 
 @Composable
-fun AuthorScreen(authorId: String,onBack: ()->Unit,onArticle: (String)->Unit,onNavigate: (Destination)->Unit) {
+fun AuthorScreen(authorId: String,onBack: ()->Unit,onArticle: (String)->Unit,onNavigate: (Destination)->Unit,avatarArrival: Int=0) {
     val author=SampleLibrary.authors.find {it.id==authorId}
     if(author==null){PageFrame("作者主页",onBack,"author-missing-screen"){Text("没有找到这位示例作者")};return}
     val cover=if(author.id=="zhou")Cover.ARCHITECTURE else null
     Box(Modifier.fillMaxSize().testTag("author-screen")) {
         BrowseScene(Destination.PROFILE,"",onNavigate,showHeader=false) {
             ProfileFeed(PreviewProfile(author.name,"sample_"+author.id,author.bio,cover=cover),author.id,false,false,false,onArticle,
-                progress=LocalProfileEntryProgress.current)
+                progress=LocalProfileEntryProgress.current,authorArrival=avatarArrival)
         }
     }
 }

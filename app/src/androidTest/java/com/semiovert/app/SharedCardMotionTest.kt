@@ -29,7 +29,7 @@ class SharedCardMotionTest {
     }
     @Test fun searchStackLiftsToReadingAndRestoresQueryWhileAuthorsStayRows() {
         navigate("搜索")
-        app.onNodeWithTag("search-input").performTextInput("林间");Espresso.closeSoftKeyboard();app.waitForIdle()
+        app.onNodeWithTag("search-input").performTextInput("林间");app.onNodeWithTag("search-input").performImeAction();Espresso.closeSoftKeyboard();app.waitForIdle()
         app.onNodeWithTag("search-wave").assertIsDisplayed()
         lift("forest",135f)
         app.onNodeWithTag("reader-screen").assertIsDisplayed()

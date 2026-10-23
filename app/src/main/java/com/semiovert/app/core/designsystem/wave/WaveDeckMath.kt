@@ -43,6 +43,13 @@ object WaveDeckMath {
         g.uniformTopGap?.let {g.frontTop-depth*it}
             ?: (g.frontTop-depth*g.stackStep+verticalReference(g.width,g.height)*min(depth*.05f,.28f)/2f)
 
+    // Budget for the page's maximum visible stack, even when fewer articles are loaded.
+    private fun stackX(depth: Float,g: WaveDeckGeometry,visibleLimit: Int): Float {
+        val available=((g.width-g.cardSize)/2f-8f).coerceAtLeast(0f)
+        val step=min(3f,available/(visibleLimit-1).coerceAtLeast(1))
+        return g.width/2f-depth*step
+    }
+
     fun geometry(width: Float,height: Float,count: Int): WaveDeckGeometry {
         val card=min(width*.90f,min(420f,height*.65f))
         val reference=verticalReference(width,height)
@@ -104,7 +111,7 @@ object WaveDeckMath {
             // of the crest. Continue that falloff for the taller mobile stack.
             val influence=if(slot==0).25f else .10f*.4f.pow(slot-1)
             val crest=min(g.cardSize*.6f,g.height*.30f)
-            WaveCardPose(article,g.width/2f,(g.height+top)/2f,1f,count-depth,g.height-top,
+            WaveCardPose(article,stackX(depth,g,visibleLimit),(g.height+top)/2f,1f,count-depth,g.height-top,
                 waveOffset=crest*influence*wave*wave)
         } else {
             val loop=distance-(count-1f)
@@ -115,7 +122,7 @@ object WaveDeckMath {
                 // Position/depth are reset only between a fully offscreen pose and an invisible one.
                 val retreat=smooth(loop/RETURN_FRACTION)
                 val top=stackTop(count-1f,g)+g.stackStep*1.3f*retreat
-                WaveCardPose(article,g.width/2f,(g.height+top)/2f,1f,1f-.5f*retreat,
+                WaveCardPose(article,stackX(count-1f,g,visibleLimit),(g.height+top)/2f,1f,1f-.5f*retreat,
                     g.height-top,1f-retreat,returning=true)
             }
         }
@@ -139,15 +146,16 @@ object WaveDeckMath {
                 val part=depth-whole
                 val wave=sin(PI.toFloat()*part)
                 val lag=min(.10f+.035f*whole,.28f)
-                val top=stackTop(depth+lag*wave*wave,g)
+                val waveDepth=depth+lag*wave*wave
+                val top=stackTop(waveDepth,g)
                 val influence=if(whole==0).25f else .10f*.4f.pow(whole-1)
-                add(WaveCardPose(index(page+slot,count),g.width/2f,(g.height+top)/2f,1f,visible-depth,g.height-top,
+                add(WaveCardPose(index(page+slot,count),stackX(waveDepth,g,visible),(g.height+top)/2f,1f,visible-depth,g.height-top,
                     waveOffset=min(g.cardSize*.6f,g.height*.30f)*influence*wave*wave))
             }
             if(fraction>=EXIT_FRACTION) {
                 val entrance=smooth((fraction-EXIT_FRACTION)/RETURN_FRACTION)
                 val top=stackTop(visible-1f,g)+g.stackStep*1.3f*(1f-entrance)
-                add(WaveCardPose(index(page+visible,count),g.width/2f,(g.height+top)/2f,1f,1f,g.height-top,alpha=entrance))
+                add(WaveCardPose(index(page+visible,count),stackX(visible-1f,g,visible),(g.height+top)/2f,1f,1f,g.height-top,alpha=entrance))
             }
         }
     }

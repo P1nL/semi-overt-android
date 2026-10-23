@@ -20,12 +20,13 @@ import com.semiovert.app.core.model.PreviewValidation
 @Composable
 private fun AccountField(label: String,value: String,onValue: (String)->Unit,error: String?=null,password: Boolean=false,tag: String=label) {
     var visible by remember {mutableStateOf(false)}
-    OutlinedTextField(value=value,onValueChange=onValue,label={Text(label)},singleLine=true,isError=error!=null,
+    val spark=rememberSparkControl()
+    OutlinedTextField(value=value,onValueChange=onValue,label={Text(label)},singleLine=true,isError=error!=null,interactionSource=spark.source,
         supportingText=if(error!=null) {{Text(error)}} else null,
         visualTransformation=if(password&&!visible)PasswordVisualTransformation() else VisualTransformation.None,
         keyboardOptions=KeyboardOptions(keyboardType=if(password)KeyboardType.Password else if(label.contains("邮箱"))KeyboardType.Email else KeyboardType.Text),
         trailingIcon=if(password) {{PasswordToggleButton(visible,{visible=it},Modifier.testTag("$tag-visibility"))}} else null,
-        modifier=Modifier.fillMaxWidth().padding(bottom=12.dp).animateContentSize(tween(motionMillis(180),easing=SoEase)).testTag(tag))
+        modifier=Modifier.fillMaxWidth().padding(bottom=12.dp).animateContentSize(tween(motionMillis(180),easing=SoEase)).then(spark.modifier).testTag(tag))
 }
 
 /** Shared form: the guest profile owns login, while registration remains a secondary page. */
@@ -86,22 +87,25 @@ fun ForgotPasswordScreen(onDone: ()->Unit) {
         if(completed) {
             Text("演示重置已完成",style=MaterialTheme.typography.titleLarge,modifier=Modifier.padding(bottom=12.dp))
             Text("未修改真实账号密码。",style=MaterialTheme.typography.bodyMedium)
-            Button(onClick=onDone,modifier=Modifier.fillMaxWidth().padding(top=24.dp).heightIn(min=52.dp)) {Text("返回个人页")}
+            val spark=rememberSparkControl()
+            Button(onClick=onDone,interactionSource=spark.source,modifier=Modifier.fillMaxWidth().padding(top=24.dp).heightIn(min=52.dp).then(spark.modifier)) {Text("返回个人页")}
         }else {
             DemoNotice("离线重置演示，不发送邮件，也不修改真实账号。")
             AccountField("邮箱",email,{email=it;sent=false;code="";attempted=false},if(attempted)PreviewValidation.email(email) else null,tag="recovery-email")
-            TextButton(onClick={attempted=true;if(PreviewValidation.email(email)==null){sent=true;attempted=false}},modifier=Modifier.fillMaxWidth()) {Text("获取演示验证码")}
+            val codeSpark=rememberSparkControl()
+            TextButton(onClick={attempted=true;if(PreviewValidation.email(email)==null){sent=true;attempted=false}},interactionSource=codeSpark.source,modifier=Modifier.fillMaxWidth().then(codeSpark.modifier)) {Text("获取演示验证码")}
             if(sent)Text("演示验证码：123456",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.primary,modifier=Modifier.padding(bottom=12.dp))
             val codeError=when { !sent->"请先获取演示验证码";code!="123456"->"请输入上方的演示验证码";else->null }
             AccountField("验证码",code,{code=it},if(attempted)codeError else null,tag="recovery-code")
             AccountField("新演示密码",password,{password=it},if(attempted)PreviewValidation.password(password) else null,password=true,tag="reset-password")
             AccountField("确认新密码",confirmation,{confirmation=it},if(attempted&&confirmation!=password)"两次演示密码不一致" else null,password=true,tag="reset-confirmation")
-            Button(onClick={
+            val resetSpark=rememberSparkControl()
+            Button(interactionSource=resetSpark.source,onClick={
                 attempted=true
                 if(PreviewValidation.email(email)==null&&codeError==null&&PreviewValidation.password(password)==null&&password==confirmation) {
                     password="";confirmation="";code="";keyboard?.hide();completed=true
                 }
-            },modifier=Modifier.fillMaxWidth().heightIn(min=52.dp)) {Text("完成演示重置")}
+            },modifier=Modifier.fillMaxWidth().heightIn(min=52.dp).then(resetSpark.modifier)) {Text("完成演示重置")}
         }
     }
 }
