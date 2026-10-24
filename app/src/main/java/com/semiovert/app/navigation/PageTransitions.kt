@@ -90,6 +90,8 @@ internal fun AnimatedContentScope.SceneMotionContent(
     CompositionLocalProvider(
         LocalFlowRoll provides hidden,
         LocalFlowPhase provides phase,
+        LocalBrowseAnnotationAlpha provides SceneMotion.browseAnnotationAlpha(hidden,phase,
+            if(phase==FlowPhase.EXIT)handoff?.exitMillis?:0 else handoff?.enterMillis?:0),
         LocalProfileEntryProgress provides (1f - hidden),
         content = content,
     )

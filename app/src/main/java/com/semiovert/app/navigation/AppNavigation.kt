@@ -69,6 +69,7 @@ fun AppNavigation(state: PreviewState,model: PreviewViewModel,onStatusBarAppeara
     val homeSnapshot=remember {HomeSnapshotState()}
     val dark=MaterialTheme.colorScheme.background.luminance()<.5f
     var homeEntry by rememberSaveable {mutableIntStateOf(0)}
+    var mainCirclePage by rememberSaveable {mutableStateOf(Destination.HOME)}
     var profileEntry by remember {mutableIntStateOf(0)}
     var handoff by remember {mutableStateOf<PageHandoff?>(null)}
     var authorHandoff by remember {mutableStateOf<AuthorAvatarHandoff?>(null)}
@@ -82,7 +83,8 @@ fun AppNavigation(state: PreviewState,model: PreviewViewModel,onStatusBarAppeara
     val lightStatus=MaterialTheme.colorScheme.surface.luminance()>.5f
     SideEffect {onStatusBarAppearance(lightStatus)}
     val topRoutes=remember {Destination.entries.map {it.route}.toSet()}
-    val navigate: (Destination)->Unit={target ->
+    val navigateTo: (Destination,Boolean)->Unit={target,shortcut ->
+        if(!navigating)mainCirclePage=mainCirclePageAfter(mainCirclePage,target,shortcut)
         if(controller.currentDestination?.route!=target.route&&!navigating) {
             val authorSource=controller.currentBackStackEntry?.takeIf {it.destination.route==ScreenRoutes.AUTHOR||it.destination.route=="reader/{articleId}"}
             focus.clearFocus();keyboard?.hide()
@@ -110,6 +112,8 @@ fun AppNavigation(state: PreviewState,model: PreviewViewModel,onStatusBarAppeara
                 maxOf(handoff?.identityMillis?:0,AvatarPixelMotion.DURATION_MILLIS),changesIdentity=true)
         }
     }
+    val navigate: (Destination)->Unit={navigateTo(it,false)}
+    val navigateShortcut: (Destination)->Unit={navigateTo(it,true)}
     fun changeRoute(restoringReaderCard: Boolean=false,visitingAuthor: String?=null,action: ()->Unit) {
         if(!navigating) {
             focus.clearFocus();keyboard?.hide()
@@ -177,9 +181,12 @@ fun AppNavigation(state: PreviewState,model: PreviewViewModel,onStatusBarAppeara
     val canSwipeBack: ()->Boolean={!navigating}
     BackHandler(!navigating&&entry?.destination?.route in topRoutes&&entry?.destination?.route!=Destination.HOME.route) {navigate(Destination.HOME)}
     CompositionLocalProvider(LocalNavigationPlacement provides state.placement,
+        LocalMainCirclePage provides mainCirclePage,
+        LocalShortcutNavigate provides navigateShortcut,
         LocalHomeSnapshot provides homeSnapshot,
         LocalHomeEntry provides homeEntry,
         LocalShortcuts provides ShortcutActions(state.shortcuts,model::shortcut,model::removeShortcut)) {
+        NavigationShortcutHost(Destination.entries.find {it.route==entry?.destination?.route},navigateShortcut,!navigating) {
         SparkFeedbackHost {
         AuthorAvatarTransitionHost(authorHandoff) {
         DeckCounterHost(entry?.destination?.route,SampleLibrary.articles.size) {
@@ -237,6 +244,7 @@ fun AppNavigation(state: PreviewState,model: PreviewViewModel,onStatusBarAppeara
         }
         }
         }
+    }
     }
     }
     // Finish the handoff instead of snapping both scenes back to their resting positions.

@@ -7,6 +7,23 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class DeckSceneMotionTest {
+    @Test fun browseLabelAndCounterEnterAndExitInSixHundredMilliseconds() {
+        assertEquals(600,SceneMotion.BROWSE_ANNOTATION_MS)
+        assertEquals(1f,SceneMotion.browseAnnotationAlpha(0f,FlowPhase.IDLE,0),0f)
+        for(duration in listOf(SceneMotion.CATEGORY_ENTER_MS,SceneMotion.SEARCH_ENTER_MS)) {
+            for(phase in listOf(FlowPhase.ENTER,FlowPhase.EXIT)) {
+                fun alpha(elapsed: Int): Float {
+                    val progress=elapsed.toFloat()/duration
+                    return SceneMotion.browseAnnotationAlpha(if(phase==FlowPhase.ENTER)1f-progress else progress,phase,duration)
+                }
+                assertEquals(if(phase==FlowPhase.ENTER)0f else 1f,alpha(0),.001f)
+                assertEquals(.5f,alpha(300),.001f)
+                assertEquals(if(phase==FlowPhase.ENTER)1f else 0f,alpha(600),.001f)
+                assertEquals(if(phase==FlowPhase.ENTER)1f else 0f,alpha(duration),.001f)
+            }
+        }
+    }
+
     @Test fun categorySwapUsesFiveHundredAndFiftyMillisecondsPerPhase() {
         assertEquals(550,SceneMotion.CATEGORY_SWAP_MS)
     }
@@ -28,22 +45,38 @@ class DeckSceneMotionTest {
     }
 
     @Test fun readingOpenAndReturnLeaveTimeForVisibleStages() {
-        val old=TargetBasedAnimation(SceneMotion.readingSpring(),Float.VectorConverter,0f,1f)
-        val opening=TargetBasedAnimation(SceneMotion.readingOpenSpring(),Float.VectorConverter,0f,1f)
-        assertTrue(opening.durationNanos>old.durationNanos*1.8)
-        val speed=SceneMotion.readingReleaseVelocity(640f)
-        val released=TargetBasedAnimation(SceneMotion.readingOpenSpring(),Float.VectorConverter,.25f,1f,AnimationVector1D(speed))
-        assertEquals(speed,released.getVelocityVectorFromNanos(0L).value,.001f)
+        val opening=TargetBasedAnimation(SceneMotion.readingOpenSpec(),Float.VectorConverter,0f,1f)
+        assertEquals(1_100_000_000L,opening.durationNanos)
+        assertEquals(.5f,opening.getValueFromNanos(550_000_000L),.001f)
+        assertEquals(1f,opening.getValueFromNanos(opening.durationNanos),0f)
+        assertTrue(SceneMotion.readingContainer(.70f)<.2f)
+        assertEquals(.5f,SceneMotion.readingContainer(.78f),.001f)
+        assertTrue(SceneMotion.readingContainer(.81f)>.5f)
+        assertEquals(1f,SceneMotion.readingContainer(.94f),0f)
         val closing=TargetBasedAnimation(SceneMotion.readingCloseSpec(),Float.VectorConverter,1f,0f)
-        assertEquals(1_600_000_000L,closing.durationNanos)
-        assertTrue(SceneMotion.readingBody(closing.getValueFromNanos(250_000_000L))>0f)
-        assertEquals(.5f,closing.getValueFromNanos(800_000_000L),.001f)
+        assertEquals(1_300_000_000L,closing.durationNanos)
+        assertTrue(SceneMotion.readingBody(closing.getValueFromNanos(closing.durationNanos*5/32))>0f)
+        assertEquals(.5f,closing.getValueFromNanos(650_000_000L),.001f)
         assertEquals(0f,closing.getValueFromNanos(closing.durationNanos),0f)
+    }
+    @Test fun fastLiftCannotShortenOpeningOrRushTheTitleStage() {
+        val speed=SceneMotion.readingReleaseVelocity(12_000f)
+        for(start in listOf(0f,SceneMotion.readingDrag(.1f),SceneMotion.readingDrag(20f))) {
+            val opening=TargetBasedAnimation(SceneMotion.readingOpenSpec(),Float.VectorConverter,start,1f)
+            val flung=TargetBasedAnimation(SceneMotion.readingOpenSpec(),Float.VectorConverter,start,1f,AnimationVector1D(speed))
+            assertEquals(1_100_000_000L,flung.durationNanos)
+            val times=(0..100).map {it*flung.durationNanos/100}
+            for(time in times)assertEquals(opening.getValueFromNanos(time),flung.getValueFromNanos(time),0f)
+            val titleStart=times.first {SceneMotion.readingTitlePosition(flung.getValueFromNanos(it))>0f}
+            val titleEnd=times.first {SceneMotion.readingTitlePosition(flung.getValueFromNanos(it))>=1f}
+            assertTrue("A fast lift preserves the title's share of the shorter opening",titleEnd-titleStart>=flung.durationNanos*3/16)
+        }
     }
     @Test fun readingTextSettlesBeforeAvatarAndBodyBegin() {
         val held=SceneMotion.readingDrag(10f)
         assertTrue(held<SceneMotion.READING_CONTAINER_START)
         assertEquals(0f,SceneMotion.readingText(held),0f)
+        assertEquals(0f,SceneMotion.readingTitlePosition(held),0f)
         assertEquals(0f,SceneMotion.readingAvatar(held),0f)
         assertEquals(0f,SceneMotion.readingBody(held),0f)
         assertTrue(SceneMotion.readingChrome(SceneMotion.readingDrag(.2f))>0f)
@@ -53,6 +86,23 @@ class DeckSceneMotionTest {
         assertTrue(SceneMotion.readingBody(.96f)>0f)
         assertEquals(1f,SceneMotion.readingBody(1f),0f)
         assertEquals(0f,SceneMotion.readingText(0f),0f)
+    }
+    @Test fun stackReadingTitleTravelsEarlierAndDeceleratesIntoItsAnchor() {
+        val start=SceneMotion.READING_CONTAINER_START;val end=SceneMotion.READING_TITLE_END
+        assertEquals(0f,SceneMotion.readingTitlePosition(0f),0f)
+        assertEquals(0f,SceneMotion.readingTitlePosition(start),0f)
+        assertTrue(SceneMotion.readingTitlePosition(.70f)>0f)
+        var previous=0f;var previousStep=Float.POSITIVE_INFINITY
+        for(frame in 1..8) {
+            val next=SceneMotion.readingTitlePosition(start+(end-start)*frame/8f)
+            val step=next-previous
+            assertTrue("Title keeps moving toward its anchor",step>0f)
+            assertTrue("Title displacement decreases toward arrival",step<previousStep)
+            previous=next;previousStep=step
+        }
+        assertEquals(1f,previous,0f)
+        assertEquals(1f,SceneMotion.readingTitlePosition(1f),0f)
+        assertEquals(0f,SceneMotion.readingAvatar(end),0f)
     }
     @Test fun readingSpringCarriesReleaseVelocityAndFollowersReboundInBothDirections() {
         val speed=SceneMotion.readingReleaseVelocity(640f)

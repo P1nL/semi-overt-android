@@ -134,7 +134,7 @@ fun CoverArticleCard(article: Article,selected: Boolean,modifier: Modifier,cover
                 }
                 Box(Modifier.align(Alignment.TopCenter).size(96.dp,48.dp).onGloballyPositioned {handleBounds=it}.then(gesture)
                     .then(if(allowLift)Modifier.testTag("article-handle-"+article.id).semantics {contentDescription="上提展开阅读"}
-                        .clickable(enabled=interactable&&expansion?.active!=true,onClickLabel="阅读文章",onClick=openReading) else Modifier.clearAndSetSemantics {})) {
+                        .clickable(interactionSource=null,indication=null,enabled=interactable&&expansion?.active!=true,onClickLabel="阅读文章",onClick=openReading) else Modifier.clearAndSetSemantics {})) {
                     Box(Modifier.align(Alignment.TopCenter).padding(top=12.dp).size(32.dp,3.dp).background(ink.copy(alpha=.55f),RoundedCornerShape(2.dp)))
                 }
             }

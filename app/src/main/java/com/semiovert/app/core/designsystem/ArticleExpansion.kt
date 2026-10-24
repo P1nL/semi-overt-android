@@ -56,10 +56,10 @@ fun LayoutCoordinates.articleBoundsInRoot()=Rect(localToRoot(Offset.Zero),Size(s
         job?.cancel();settling=true
         job=scope.launch {
             val target=if(commit)1f else 0f
-            animate(progress,target,initialVelocity=initialVelocity,
+            animate(progress,target,initialVelocity=if(commit)0f else initialVelocity,
                 animationSpec=when {
                     !motionEnabled->snap()
-                    commit->SceneMotion.readingOpenSpring()
+                    commit->SceneMotion.readingOpenSpec()
                     else->SceneMotion.readingSpring()
                 }) {value,speed->progress=value;velocity=speed}
             progress=target;velocity=0f;settling=false

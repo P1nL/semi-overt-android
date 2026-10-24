@@ -47,6 +47,7 @@ private fun ExpansionOverlay(source: ArticleSource,state: ArticleExpansionState,
     val density=LocalDensity.current
     val p=state.progress
     val geometry=if(anchors.title==Rect.Zero)0f else SceneMotion.readingText(p)
+    val titlePosition=if(source.origin==ArticleOrigin.STACK&&anchors.title!=Rect.Zero)SceneMotion.readingTitlePosition(p) else geometry
     val color=lerp(source.ink,MaterialTheme.colorScheme.onSurface,geometry)
     val metaColor=lerp(source.ink,MaterialTheme.colorScheme.onSurfaceVariant,geometry)
     BoxWithConstraints(Modifier.fillMaxSize().zIndex(20f)
@@ -82,7 +83,7 @@ private fun ExpansionOverlay(source: ArticleSource,state: ArticleExpansionState,
         val cardTitle=MaterialTheme.typography.titleLarge.copy(fontFamily=FontFamily.SansSerif,fontSize=23.sp,lineHeight=29.sp,fontWeight=FontWeight.SemiBold)
         val cardMeta=MaterialTheme.typography.bodySmall.copy(fontSize=13.sp,lineHeight=18.sp)
         StableReadingText(source.article.title,carried(source.title),anchors.title,cardTitle,MaterialTheme.typography.headlineLarge,
-            color,geometry,root,sourceLines=3,targetLines=Int.MAX_VALUE,sourceScale=sourceScale)
+            color,geometry,root,sourceLines=3,targetLines=Int.MAX_VALUE,sourceScale=sourceScale,positionProgress=titlePosition)
         StableReadingText(source.article.author.name,carried(source.author),anchors.author,cardMeta,MaterialTheme.typography.labelLarge,
             color,geometry,root,sourceScale=sourceScale)
         val separator=Rect(source.author.right,source.author.top,source.duration.left,source.author.bottom)
@@ -102,15 +103,16 @@ private fun ExpansionOverlay(source: ArticleSource,state: ArticleExpansionState,
 /** Measure each endpoint once. Only layers scale/move; width and font never reflow in flight. */
 @Composable
 private fun StableReadingText(text: String,from: Rect,to: Rect,fromStyle: TextStyle,toStyle: TextStyle,
-    color: Color,progress: Float,root: Offset,sourceLines: Int=1,targetLines: Int=1,targetText: String=text,sourceScale: Float=1f) {
+    color: Color,progress: Float,root: Offset,sourceLines: Int=1,targetLines: Int=1,targetText: String=text,sourceScale: Float=1f,
+    positionProgress: Float=progress) {
     val density=LocalDensity.current
     val target=if(to==Rect.Zero)from else to
     val ratio=toStyle.fontSize.value/fromStyle.fontSize.value
     val zoom=sourceScale+(ratio-sourceScale)*progress
     val blend=SceneMotion.segment(progress,.2f,.8f)
     fun placement(width: Float,scale: Float,opacity: Float)=Modifier
-        .offset {IntOffset((from.left+(target.left-from.left)*progress-root.x).roundToInt(),
-            (from.top+(target.top-from.top)*progress-root.y).roundToInt())}
+        .offset {IntOffset((from.left+(target.left-from.left)*positionProgress-root.x).roundToInt(),
+            (from.top+(target.top-from.top)*positionProgress-root.y).roundToInt())}
         .requiredWidth(with(density){width.toDp()})
         .graphicsLayer {transformOrigin=TransformOrigin(0f,0f);scaleX=scale;scaleY=scale;alpha=opacity}
         .clearAndSetSemantics {}

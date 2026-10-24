@@ -5,5 +5,7 @@ import com.semiovert.app.core.model.NavigationPlacement
 import com.semiovert.app.core.model.NavigationShortcut
 
 val LocalNavigationPlacement=staticCompositionLocalOf {NavigationPlacement()}
+internal val LocalMainCirclePage=staticCompositionLocalOf<Destination?> {null}
+internal val LocalShortcutNavigate=staticCompositionLocalOf<((Destination)->Unit)?> {null}
 class ShortcutActions(val items: List<NavigationShortcut>,val save: (NavigationShortcut)->Unit,val remove: (String)->Unit)
 val LocalShortcuts=staticCompositionLocalOf {ShortcutActions(emptyList(),{},{})}

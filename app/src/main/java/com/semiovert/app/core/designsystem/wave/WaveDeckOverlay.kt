@@ -12,6 +12,9 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
@@ -19,6 +22,11 @@ import androidx.compose.material3.MaterialTheme
 import com.semiovert.app.core.designsystem.*
 
 private val LocalWaveDeckOverlay=staticCompositionLocalOf<SharedTransitionScope?> {null}
+@Stable internal class ShortcutFusionOverlay(val scope: SharedTransitionScope) {
+    var active by mutableStateOf(false)
+    var joinedShadow by mutableStateOf(false)
+}
+internal val LocalShortcutFusionOverlay=staticCompositionLocalOf<ShortcutFusionOverlay?> {null}
 @Stable private class MainCircleDrawOwner(val icon: MainCircleIconState,val colors: MainCircleColorState) {
     val entries=mutableStateListOf<Any>()
 }
@@ -59,6 +67,7 @@ internal fun Modifier.readingStackOverlay(layer: Float?,active: ()->Boolean): Mo
  */
 @Composable
 internal fun Modifier.mainCircleOverlay(ownerKey: Any?=null): Modifier {
+    val fusion=LocalShortcutFusionOverlay.current
     val overlay=LocalWaveDeckOverlay.current ?: return this
     val owner=LocalMainCircleDrawOwner.current ?: return this
     val defaultKey=remember {Any()}
@@ -67,11 +76,20 @@ internal fun Modifier.mainCircleOverlay(ownerKey: Any?=null): Modifier {
         owner.entries.add(token)
         onDispose {owner.entries.remove(token)}
     }
+    // Keep both scope registrations stable; change only which one draws this single layer.
+    val outer=if(fusion==null)this else with(fusion.scope) {
+        this@mainCircleOverlay.renderInSharedTransitionScopeOverlay(zIndexInOverlay=2f,renderInOverlay={fusion.active})
+    }
     return with(overlay) {
-        this@mainCircleOverlay.renderInSharedTransitionScopeOverlay(zIndexInOverlay=2f,renderInOverlay={true})
+        outer.renderInSharedTransitionScopeOverlay(zIndexInOverlay=2f,renderInOverlay={fusion?.active!=true})
             .drawWithContent {if(owner.entries.lastOrNull()===token)drawContent()}
     }
 }
+
+/** Only the current circle may publish the fusion anchor to the persistent shortcut host. */
+@Composable
+internal fun isMainCircleDrawOwner(ownerKey: Any): Boolean =
+    LocalMainCircleDrawOwner.current?.entries?.lastOrNull()===ownerKey
 
 /** Only the page that currently draws the circle may retarget the persistent inner glyph. */
 @Composable

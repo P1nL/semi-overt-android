@@ -6,6 +6,17 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class LiquidCircleGeometryTest {
+    @Test fun grabbedDropletNeckUsesTheDistanceLimitAndWorksAtAnyAngle() {
+        val direction=Offset(.6f,.8f)
+        for(distance in listOf(100f,170f,215f)) {
+            val neck=LiquidCircleGeometry.bridge(Offset.Zero,28f,direction*distance,29.64f,216f)
+            assertNotNull(neck)
+            assertEquals(28f,neck!!.mainA.getDistance(),.001f)
+            assertEquals(29.64f,(neck.smallA-direction*distance).getDistance(),.001f)
+        }
+        assertNull(LiquidCircleGeometry.bridge(Offset.Zero,28f,direction*217f,29.64f,216f))
+    }
+
     @Test fun neckExistsOnlyBetweenContainmentAndCompleteSeparation() {
         val main=Offset.Zero
         assertNull(LiquidCircleGeometry.bridge(main,28f,main,20f))
@@ -32,6 +43,24 @@ class LiquidCircleGeometryTest {
             previousWidth=width
         }
         assertTrue("The liquid neck must pinch rather than vanish at full width",previousWidth<.01f)
+    }
+
+    @Test fun appearanceGraduallyWidensTheSameNeckUsedByFillAndShadow() {
+        val main=Offset.Zero
+        val small=Offset(60f,0f)
+        val limit=80f
+        assertNull(LiquidCircleGeometry.bridge(main,28f,small,26f,limit,reveal=0f))
+        var previousWidth=0f
+        for(progress in listOf(.05f,.25f,.5f,.75f,1f)) {
+            val neck=LiquidCircleGeometry.bridge(main,28f,small,26f,limit,reveal=progress)!!
+            val width=(neck.mainA-neck.mainB).getDistance()
+            assertTrue("neck must grow instead of appearing at full width",width>previousWidth)
+            assertEquals(28f,neck.mainA.getDistance(),.001f)
+            assertEquals(26f,(neck.smallA-small).getDistance(),.001f)
+            previousWidth=width
+        }
+        assertEquals(LiquidCircleGeometry.bridge(main,28f,small,26f,limit),
+            LiquidCircleGeometry.bridge(main,28f,small,26f,limit,reveal=1f))
     }
 
     @Test fun allRadialDirectionsKeepFiniteHandlesAndColorChangesOnlyAfterDetachment() {

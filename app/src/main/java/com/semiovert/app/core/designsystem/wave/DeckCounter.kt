@@ -11,6 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -24,6 +25,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.semiovert.app.core.designsystem.motionMillis
+import com.semiovert.app.core.designsystem.LocalBrowseAnnotationAlpha
 import com.semiovert.app.core.designsystem.readingChromeFade
 
 internal object DeckCounterLayout {
@@ -55,6 +57,7 @@ fun DeckCounterHost(owner: String?,capacity: Int,content: @Composable ()->Unit) 
 @Composable
 internal fun DeckCounter(current: Int,total: Int,page: String,modifier: Modifier=Modifier) {
     val motion=LocalCounterMotion.current?:return
+    val annotationAlpha=LocalBrowseAnnotationAlpha.current
     SideEffect {
         // The departing route must not overwrite the arriving route's counter.
         if(motion.owner==page){motion.numbers.current=current;motion.numbers.total=total}
@@ -91,7 +94,7 @@ internal fun DeckCounter(current: Int,total: Int,page: String,modifier: Modifier
         // Clip at the scope bar's bottom so rolling digits cannot rise into its buttons.
         Box(Modifier.fillMaxWidth().offset(y=DeckCounterLayout.localTop(statusTop,page=="search").dp)
             .height(height).clipToBounds().readingChromeFade()) {
-        Row(Modifier.fillMaxWidth().offset(y=-topBearing),
+        Row(Modifier.fillMaxWidth().offset(y=-topBearing).graphicsLayer {alpha=annotationAlpha},
             verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.Center) {
             @Composable fun Number(transition: Transition<Int>,wrap: Boolean,alignment: TextAlign) {
                 transition.AnimatedContent(modifier=Modifier.width(columnWidth).height(height),contentAlignment=Alignment.Center,
