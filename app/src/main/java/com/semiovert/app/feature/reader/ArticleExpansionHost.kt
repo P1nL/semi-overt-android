@@ -62,18 +62,22 @@ private fun ExpansionOverlay(source: ArticleSource,state: ArticleExpansionState,
         val lifted=Rect(Offset(b.left-b.width*(liftedScale-1f)/2f,
             b.top-SceneMotion.LIFT_DISTANCE_DP*density.density*lift),Size(b.width*liftedScale,b.height*liftedScale))
         val container=SceneMotion.readingContainer(p)
-        val card=lerp(lifted,Rect(root,Size(widthPx,heightPx)),container)
+        val reader=Rect(root,Size(widthPx,heightPx))
+        val card=lerp(lifted,reader,container)
+        // Only the opening home background starts early; text anchors and return keep their old path.
+        val background=if(source.origin==ArticleOrigin.HOME&&!state.returning)SceneMotion.homeReadingContainer(p) else container
+        val backgroundCard=lerp(lifted,reader,background)
         val sourceScale=card.width/b.width
         // Keep the original text layout: the source anchors travel with the whole card first.
         fun carried(anchor: Rect)=Rect(Offset(card.left+(anchor.left-b.left)*sourceScale,
             card.top+(anchor.top-b.top)*sourceScale),anchor.size)
-        Surface(Modifier.offset {IntOffset((card.left-root.x).roundToInt(),(card.top-root.y).roundToInt())}
+        Surface(Modifier.offset {IntOffset((backgroundCard.left-root.x).roundToInt(),(backgroundCard.top-root.y).roundToInt())}
             .wrapContentSize(Alignment.TopStart,unbounded=true)
-            .requiredSize(with(density){card.width.toDp()},with(density){card.height.toDp()}),
-            shape=RoundedCornerShape(topStart=(18f*(1f-container)).dp,topEnd=(18f*(1f-container)).dp,
-                bottomStart=(if(source.origin==ArticleOrigin.HOME)18f*(1f-container) else 0f).dp,
-                bottomEnd=(if(source.origin==ArticleOrigin.HOME)18f*(1f-container) else 0f).dp),
-            shadowElevation=((if(source.origin==ArticleOrigin.HOME)10f else 2f)*(1f-container)).dp,
+            .requiredSize(with(density){backgroundCard.width.toDp()},with(density){backgroundCard.height.toDp()}),
+            shape=RoundedCornerShape(topStart=(18f*(1f-background)).dp,topEnd=(18f*(1f-background)).dp,
+                bottomStart=(if(source.origin==ArticleOrigin.HOME)18f*(1f-background) else 0f).dp,
+                bottomEnd=(if(source.origin==ArticleOrigin.HOME)18f*(1f-background) else 0f).dp),
+            shadowElevation=((if(source.origin==ArticleOrigin.HOME)10f else 2f)*(1f-background)).dp,
             color=MaterialTheme.colorScheme.background.copy(alpha=if(source.origin==ArticleOrigin.HOME)SceneMotion.homeReadingFade(p) else SceneMotion.readingBody(p))) {
             Image(articleCoverPainter(articleCoverResource(source.article,source.origin==ArticleOrigin.STACK)),null,contentScale=ContentScale.Crop,
                 modifier=Modifier.fillMaxSize().graphicsLayer {alpha=1f-SceneMotion.segment(p,.70f,.90f)})

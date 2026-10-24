@@ -2,6 +2,7 @@ package com.semiovert.app.core.designsystem
 
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.Easing
 import androidx.compose.runtime.compositionLocalOf
 import kotlin.math.PI
 import kotlin.math.sin
@@ -36,9 +37,13 @@ object SceneMotion {
     const val READING_DRAG_STAGE = .55f
     const val READING_CONTAINER_START = .62f
     const val READING_CONTAINER_END = .94f
+    const val HOME_READING_CONTAINER_START = .34f
+    const val HOME_READING_CONTAINER_END = .96f
     const val READING_TITLE_END = .90f
     const val READING_OPEN_MS = 800
-    const val READING_EXIT_MS = 1300
+    const val READING_EXIT_MS = 1100
+    private const val READING_EXIT_REFERENCE_MS = 1300
+    private const val READING_EXIT_CONTENT_MS = 560
     fun segment(value: Float,start: Float,end: Float)=((value-start)/(end-start)).coerceIn(0f,1f)
     fun readingDrag(raw: Float): Float {
         val up=raw.coerceAtLeast(0f)
@@ -50,10 +55,17 @@ object SceneMotion {
     fun readingSpring()=spring<Float>(dampingRatio=.84f,stiffness=105f,visibilityThreshold=.001f)
     // Fling speed decides whether to open, never how quickly the visible stages play.
     fun readingOpenSpec()=tween<Float>(READING_OPEN_MS,easing=SoSceneEase)
-    // A return starts at rest: give the early body/avatar stages real time before the card retracts.
-    fun readingCloseSpec()=tween<Float>(READING_EXIT_MS,easing=SoSceneEase)
+    // Preserve the content/background return, then smoothly speed up only the final card landing.
+    fun readingCloseSpec()=tween<Float>(READING_EXIT_MS,easing=Easing {fraction->
+        val elapsed=fraction*READING_EXIT_MS
+        val landing=segment(elapsed,READING_EXIT_CONTENT_MS.toFloat(),READING_EXIT_MS.toFloat())
+        val originalTime=elapsed+(READING_EXIT_REFERENCE_MS-READING_EXIT_MS)*landing*landing
+        SoSceneEase.transform(originalTime/READING_EXIT_REFERENCE_MS)
+    })
     fun readingFollowerSpring(rank: Int)=spring<Float>(dampingRatio=.74f,stiffness=170f/(1f+.15f*rank),visibilityThreshold=.1f)
     fun readingContainer(progress: Float)=SoSceneEase.transform(segment(progress,READING_CONTAINER_START,READING_CONTAINER_END))
+    // Home opens from progress zero: this wider window gives its background about 360ms of the 800ms clock.
+    fun homeReadingContainer(progress: Float)=SoSceneEase.transform(segment(progress,HOME_READING_CONTAINER_START,HOME_READING_CONTAINER_END))
     fun readingText(progress: Float)=SoEase.transform(segment(progress,.70f,.88f))
     // Spread stack-title travel across container expansion, with a gentle zero-speed arrival.
     fun readingTitlePosition(progress: Float): Float {
@@ -62,7 +74,9 @@ object SceneMotion {
     }
     fun readingAvatar(progress: Float)=SoEase.transform(segment(progress,READING_TITLE_END,.95f))
     fun readingBody(progress: Float)=SoEase.transform(segment(progress,.92f,1f))
-    fun readingChrome(progress: Float)=SoEase.transform(segment(progress,0f,.36f))
+    // Return has its own fade-in, starting at p=.52, rather than reversing the late exit fade.
+    fun readingChrome(progress: Float,returning: Boolean=false)=if(returning)
+        1f-SoEase.transform(segment(1f-progress,.48f,1f)) else SoEase.transform(segment(progress,0f,.36f))
     fun homeReadingFade(progress: Float)=SoEase.transform(segment(progress,0f,.60f))
     // Windows are real milliseconds, not old 1700ms proportions compressed into a 1s scene.
     fun profileSegment(progress: Float,start: Float,end: Float)=segment(progress*PROFILE_ENTER_MS,start,end)

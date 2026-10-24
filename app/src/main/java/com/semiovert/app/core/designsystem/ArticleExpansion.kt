@@ -104,7 +104,7 @@ val LocalArticleExpansion=staticCompositionLocalOf<ArticleExpansionState?> {null
 @Composable
 fun Modifier.readingChromeFade(): Modifier {
     val expansion=LocalArticleExpansion.current
-    return graphicsLayer {alpha=if(expansion?.active==true)1f-SceneMotion.readingChrome(expansion.progress) else 1f}
+    return graphicsLayer {alpha=if(expansion?.active==true)1f-SceneMotion.readingChrome(expansion.progress,expansion.returning) else 1f}
 }
 val LocalFlowPhase=compositionLocalOf {FlowPhase.IDLE}
 val LocalHomeEntry=compositionLocalOf {0}

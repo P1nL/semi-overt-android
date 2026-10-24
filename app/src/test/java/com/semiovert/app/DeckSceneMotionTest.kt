@@ -54,10 +54,65 @@ class DeckSceneMotionTest {
         assertTrue(SceneMotion.readingContainer(.81f)>.5f)
         assertEquals(1f,SceneMotion.readingContainer(.94f),0f)
         val closing=TargetBasedAnimation(SceneMotion.readingCloseSpec(),Float.VectorConverter,1f,0f)
-        assertEquals(1_300_000_000L,closing.durationNanos)
-        assertTrue(SceneMotion.readingBody(closing.getValueFromNanos(closing.durationNanos*5/32))>0f)
-        assertEquals(.5f,closing.getValueFromNanos(650_000_000L),.001f)
+        assertEquals(1_100_000_000L,closing.durationNanos)
+        assertTrue(SceneMotion.readingBody(closing.getValueFromNanos(200_000_000L))>0f)
+        assertTrue(closing.getValueFromNanos(560_000_000L) in .61f.. .63f)
         assertEquals(0f,closing.getValueFromNanos(closing.durationNanos),0f)
+    }
+    @Test fun readingReturnKeepsTheFirst560MsAndOnlySpeedsUpTheLanding() {
+        val original=TargetBasedAnimation(tween<Float>(1300,easing=SoSceneEase),Float.VectorConverter,1f,0f)
+        val closing=TargetBasedAnimation(SceneMotion.readingCloseSpec(),Float.VectorConverter,1f,0f)
+        for(time in 0..560 step 10) {
+            val nanos=time*1_000_000L
+            assertEquals("Content, title and background keep their previous timing",
+                original.getValueFromNanos(nanos),closing.getValueFromNanos(nanos),.0001f)
+        }
+        assertTrue(closing.getValueFromNanos(900_000_000L)<original.getValueFromNanos(900_000_000L))
+        var previous=1f
+        for(time in 0..1100 step 10) {
+            val progress=closing.getValueFromNanos(time*1_000_000L)
+            assertTrue("A faster landing must remain monotone and never overshoot",progress in 0f..previous)
+            previous=progress
+        }
+        assertEquals(0f,previous,0f)
+    }
+    @Test fun returningChromeFadesInEarlierWhileTheCardLands() {
+        val closing=TargetBasedAnimation(SceneMotion.readingCloseSpec(),Float.VectorConverter,1f,0f)
+        fun alphaAt(millis: Int)=1f-SceneMotion.readingChrome(closing.getValueFromNanos(millis*1_000_000L),returning=true)
+        assertEquals(0f,alphaAt(500),0f)
+        assertTrue("Headers should already be visible during landing",alphaAt(700)>.2f)
+        assertTrue(alphaAt(850)>.8f)
+        assertEquals(1f,alphaAt(1100),0f)
+        val oldProgress=TargetBasedAnimation(tween<Float>(1300,easing=SoSceneEase),Float.VectorConverter,1f,0f)
+            .getValueFromNanos(700_000_000L)
+        assertEquals("The previous fade still hid the header at this time",0f,1f-SceneMotion.readingChrome(oldProgress),0f)
+        var previous=0f
+        for(time in 0..1100 step 10) {
+            val alpha=alphaAt(time)
+            assertTrue(alpha in previous..1f)
+            previous=alpha
+        }
+    }
+    @Test fun homeReadingBackgroundHasAbout360MsToExpandOnTheUnchangedOpeningClock() {
+        val opening=TargetBasedAnimation(SceneMotion.readingOpenSpec(),Float.VectorConverter,0f,1f)
+        assertEquals(800_000_000L,opening.durationNanos)
+        fun progressAt(millis: Int)=opening.getValueFromNanos(millis*1_000_000L)
+        fun backgroundAt(millis: Int)=SceneMotion.homeReadingContainer(progressAt(millis))
+        val start=(0..800).first {backgroundAt(it)>0f}
+        val end=(0..800).first {backgroundAt(it)>=1f}
+        assertTrue("Home's effective background expansion must last 350-400ms",end-start in 350..400)
+        assertEquals(0f,backgroundAt(300),0f)
+        assertTrue(backgroundAt(400)>0f)
+        assertEquals("The stack and text-anchor container must still wait",0f,SceneMotion.readingContainer(progressAt(400)),0f)
+        assertEquals(1f,backgroundAt(700),0f)
+        var previous=0f
+        for(time in 0..800 step 10) {
+            val value=backgroundAt(time)
+            assertTrue(value in previous..1f)
+            previous=value
+        }
+        assertTrue("The background must slow down into its full-screen bounds",
+            backgroundAt(680)-backgroundAt(660)<backgroundAt(660)-backgroundAt(640))
     }
     @Test fun fastLiftCannotShortenOpeningOrRushTheTitleStage() {
         val speed=SceneMotion.readingReleaseVelocity(12_000f)
