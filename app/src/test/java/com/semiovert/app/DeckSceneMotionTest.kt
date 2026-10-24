@@ -46,8 +46,8 @@ class DeckSceneMotionTest {
 
     @Test fun readingOpenAndReturnLeaveTimeForVisibleStages() {
         val opening=TargetBasedAnimation(SceneMotion.readingOpenSpec(),Float.VectorConverter,0f,1f)
-        assertEquals(1_100_000_000L,opening.durationNanos)
-        assertEquals(.5f,opening.getValueFromNanos(550_000_000L),.001f)
+        assertEquals(800_000_000L,opening.durationNanos)
+        assertEquals(.5f,opening.getValueFromNanos(400_000_000L),.001f)
         assertEquals(1f,opening.getValueFromNanos(opening.durationNanos),0f)
         assertTrue(SceneMotion.readingContainer(.70f)<.2f)
         assertEquals(.5f,SceneMotion.readingContainer(.78f),.001f)
@@ -64,7 +64,7 @@ class DeckSceneMotionTest {
         for(start in listOf(0f,SceneMotion.readingDrag(.1f),SceneMotion.readingDrag(20f))) {
             val opening=TargetBasedAnimation(SceneMotion.readingOpenSpec(),Float.VectorConverter,start,1f)
             val flung=TargetBasedAnimation(SceneMotion.readingOpenSpec(),Float.VectorConverter,start,1f,AnimationVector1D(speed))
-            assertEquals(1_100_000_000L,flung.durationNanos)
+            assertEquals(800_000_000L,flung.durationNanos)
             val times=(0..100).map {it*flung.durationNanos/100}
             for(time in times)assertEquals(opening.getValueFromNanos(time),flung.getValueFromNanos(time),0f)
             val titleStart=times.first {SceneMotion.readingTitlePosition(flung.getValueFromNanos(it))>0f}

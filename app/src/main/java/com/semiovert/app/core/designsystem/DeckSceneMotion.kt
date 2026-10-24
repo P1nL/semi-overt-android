@@ -37,7 +37,7 @@ object SceneMotion {
     const val READING_CONTAINER_START = .62f
     const val READING_CONTAINER_END = .94f
     const val READING_TITLE_END = .90f
-    const val READING_OPEN_MS = 1100
+    const val READING_OPEN_MS = 800
     const val READING_EXIT_MS = 1300
     fun segment(value: Float,start: Float,end: Float)=((value-start)/(end-start)).coerceIn(0f,1f)
     fun readingDrag(raw: Float): Float {
