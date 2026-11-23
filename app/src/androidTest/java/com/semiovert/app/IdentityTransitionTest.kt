@@ -25,6 +25,7 @@ import com.semiovert.app.core.data.PreviewViewModel
 import com.semiovert.app.core.model.PreviewState
 import com.semiovert.app.core.model.ThemeMode
 import com.semiovert.app.feature.profile.ProfileScreen
+import com.semiovert.app.feature.search.SearchScreen
 import com.semiovert.app.core.designsystem.*
 import com.semiovert.app.navigation.*
 import org.junit.Assert.*
@@ -37,7 +38,7 @@ import kotlin.math.min
 class IdentityTransitionTest {
     @get:Rule val app=createComposeRule()
 
-    @Test fun guestLoginAvatarTravelsSeparatelyWhileTheFormSlidesIn() {
+    @Test fun guestLoginAvatarMovesWhileTheFormRisesFromBelow() {
         lateinit var nav: NavHostController
         var handoff by mutableStateOf<PageHandoff?>(null)
         app.setContent {
@@ -50,7 +51,7 @@ class IdentityTransitionTest {
                             composable(Destination.HOME.route) {
                                 SceneMotionContent(Destination.HOME,handoff) {
                                     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(start=24.dp,top=30.dp)) {
-                                        IdentityAvatar(Modifier.testTag("guest-source"),size=56)
+                                        IdentityAvatar(Modifier.testTag("guest-source"),size=56,guestArtworkFraction=HOME_GHOST_DRAW_FRACTION)
                                     }
                                 }
                             }
@@ -70,7 +71,19 @@ class IdentityTransitionTest {
         try {
             val next=PageHandoff(Destination.HOME,Destination.PROFILE,profileGuest=true)
             app.runOnIdle {handoff=next;nav.navigate(Destination.PROFILE.route)}
-            app.mainClock.advanceTimeBy(200)
+            val form=app.onNodeWithTag("login-screen",useUnmergedTree=true)
+            val settings=app.onNodeWithTag("profile-settings")
+            fun settingsDarkestPixel(): Float {
+                val pixels=settings.captureToImage().toPixelMap()
+                return (0 until pixels.height).minOf {row->(0 until pixels.width).minOf {column->pixels[column,row].red}}
+            }
+            app.mainClock.advanceTimeBy(80)
+            val rising=form.getUnclippedBoundsInRoot()
+            app.mainClock.advanceTimeBy(80)
+            val approaching=form.getUnclippedBoundsInRoot()
+            app.mainClock.advanceTimeBy(90)
+            val earlySettingsInk=settingsDarkestPixel()
+            assertTrue("Settings stays hidden before the final 120ms",earlySettingsInk>.86f)
             val target=app.onNodeWithTag("login-shared-avatar",useUnmergedTree=true).fetchSemanticsNode().boundsInRoot
             // Inspect rendered ink above the form, excluding the settings button at the right edge.
             fun inkBounds(image: ImageBitmap): Rect {
@@ -88,15 +101,27 @@ class IdentityTransitionTest {
             }
             val start=inkBounds(sourceImage)
             val middle=inkBounds(app.onRoot().captureToImage())
-            assertTrue("Icon moves before the form's delayed entrance",middle.center.y>start.center.y+2f)
-            assertTrue("Icon is not carried in from the right with the form",middle.center.x>start.center.x&&middle.center.x<target.center.x)
-            assertTrue("One continuously scaling icon, not separate source and target copies",middle.width>start.width&&middle.width<target.width+2f)
-            app.mainClock.advanceTimeBy(next.enterDelayMillis+SceneMotion.PROFILE_GUEST_MS/2L-200)
-            val slidingLeft=app.onNodeWithTag("login-screen").fetchSemanticsNode().boundsInRoot.left
-            app.mainClock.advanceTimeBy(next.totalMillis.toLong()+100)
+            assertTrue("Icon keeps moving down from the header",middle.center.y>start.center.y+2f)
+            assertTrue("Icon keeps its independent horizontal travel",middle.center.x>start.center.x&&middle.center.x<target.center.x)
+            app.mainClock.advanceTimeBy(72)
+            val middleSettingsInk=settingsDarkestPixel()
+            assertTrue("Settings fades in during the avatar's final approach",middleSettingsInk in .3f..(earlySettingsInk-.04f))
+            settings.assertIsNotEnabled()
+            val lateForm=form.getUnclippedBoundsInRoot()
+            assertTrue("The form rises while the icon is still moving",rising.top.value>approaching.top.value+10f)
+            assertTrue("The form arrives from below",approaching.top.value>lateForm.top.value+10f)
+            assertEquals("The form no longer slides horizontally",lateForm.left.value,rising.left.value,1f)
+            app.mainClock.advanceTimeBy(112)
+            val settled=form.getUnclippedBoundsInRoot()
+            assertTrue("The form is still moving during the late settings fade",lateForm.top.value>settled.top.value+1f)
+            settings.assertIsEnabled()
+            assertTrue("Settings finishes with the moving avatar",settingsDarkestPixel()<.25f)
+            app.mainClock.advanceTimeBy(next.totalMillis.toLong())
             val end=inkBounds(app.onRoot().captureToImage())
-            val settledLeft=app.onNodeWithTag("login-screen").fetchSemanticsNode().boundsInRoot.left
-            assertTrue("The form still enters from the right",slidingLeft>settledLeft+10f)
+            val targetArtworkAtSourceSize=start.width*GUEST_GHOST_DRAW_FRACTION/HOME_GHOST_DRAW_FRACTION
+            assertTrue("Only the target artwork scales through the shared bounds: $start -> $middle -> $end",
+                middle.width>targetArtworkAtSourceSize-2f&&middle.width<end.width)
+            assertEquals(form.getUnclippedBoundsInRoot().top.value,settled.top.value,1f)
             assertEquals(target.center.x,end.center.x,2f)
             val back=PageHandoff(Destination.PROFILE,Destination.HOME,profileGuest=true)
             app.runOnIdle {handoff=back;nav.popBackStack()}
@@ -156,9 +181,9 @@ class IdentityTransitionTest {
                 app.runOnIdle {handoff=next;nav.navigate(to.route)}
                 app.mainClock.advanceTimeBy(240)
                 val mid=avatarBounds()
-                app.mainClock.advanceTimeBy(SceneMotion.PRIMARY_ELEMENT_MS-240L-16)
+                app.mainClock.advanceTimeBy(next.identityMillis-240L+48)
                 val arriving=avatarBounds()
-                app.mainClock.advanceTimeBy(next.totalMillis-SceneMotion.PRIMARY_ELEMENT_MS+116L)
+                app.mainClock.advanceTimeBy(next.totalMillis-next.identityMillis+52L)
                 val end=avatarBounds()
                 assertTrue("Single avatar, not separated old/new copies: $from -> $to",mid.width<=max(start.width,end.width)+3&&mid.height<=max(start.height,end.height)+3)
                 assertTrue("X follows this destination, not the previous origin: $from -> $to",mid.center.x in (min(start.center.x,end.center.x)-2)..(max(start.center.x,end.center.x)+2))
@@ -191,7 +216,7 @@ class IdentityTransitionTest {
             app.mainClock.advanceTimeBy(250)
             val arriving=app.onRoot().captureToImage()
             app.mainClock.advanceTimeBy(1500)
-            val target=app.onNodeWithContentDescription("打开页面导航").fetchSemanticsNode().boundsInRoot.center
+            val target=app.onNodeWithContentDescription("打开个人页").fetchSemanticsNode().boundsInRoot.center
             fun assertNoPurpleDisk(image: ImageBitmap,x: Int,y: Int) {
                 val pixels=image.toPixelMap()
                 for(dy in -4..4)for(dx in -4..4) {
@@ -202,6 +227,70 @@ class IdentityTransitionTest {
             assertNoPurpleDisk(departing,source.x.toInt(),source.y.toInt())
             assertNoPurpleDisk(arriving,source.x.toInt(),source.y.toInt())
             assertNoPurpleDisk(arriving,target.x.toInt(),target.y.toInt())
+        } finally {app.mainClock.autoAdvance=true}
+    }
+
+    @Test fun pressingTheRightHeaderAvatarDoesNotDrawARipple() {
+        var opened: Destination?=null
+        app.setContent {
+            SoTheme(ThemeMode.LIGHT) {
+                CompositionLocalProvider(LocalIdentity provides remember {IdentityAnchor(true,0)}) {
+                    Surface(Modifier.fillMaxSize()) {BrowseScene(Destination.CATEGORY,"",{opened=it}) {}}
+                }
+            }
+        }
+        val avatar=app.onNodeWithContentDescription("打开个人页")
+        val resting=avatar.captureToImage().toPixelMap()
+        app.mainClock.autoAdvance=false
+        try {
+            avatar.performTouchInput {down(center)}
+            app.mainClock.advanceTimeBy(160)
+            val pressed=avatar.captureToImage().toPixelMap()
+            assertTrue((0 until resting.height).all {row->
+                (0 until resting.width).all {column->resting[column,row]==pressed[column,row]}
+            })
+        } finally {
+            avatar.performTouchInput {up()}
+            app.mainClock.autoAdvance=true
+        }
+        app.runOnIdle {assertEquals(Destination.PROFILE,opened)}
+    }
+
+    @Test fun searchFieldClearsTheRightEdgeBeforeTheOldRouteIsDisposed() {
+        lateinit var nav: NavHostController
+        var handoff by mutableStateOf<PageHandoff?>(null)
+        app.setContent {
+            SoTheme {
+                CompositionLocalProvider(LocalMotionEnabled provides true) {
+                    IdentityTransitionHost {
+                        nav=rememberNavController()
+                        NavHost(nav,Destination.SEARCH.route,enterTransition={pageEnter(true)},exitTransition={pageExit(true)}) {
+                            composable(Destination.SEARCH.route) {
+                                SceneMotionContent(Destination.SEARCH,handoff) {SearchScreen({},{},{})}
+                            }
+                            composable(Destination.CATEGORY.route) {
+                                SceneMotionContent(Destination.CATEGORY,handoff) {Box(Modifier.fillMaxSize())}
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        val field=app.onNodeWithTag("search-input",useUnmergedTree=true)
+        val resting=field.getUnclippedBoundsInRoot()
+        val rightEdge=app.onRoot().getUnclippedBoundsInRoot().right
+        app.mainClock.autoAdvance=false
+        try {
+            app.runOnIdle {
+                handoff=PageHandoff(Destination.SEARCH,Destination.CATEGORY)
+                nav.navigate(Destination.CATEGORY.route)
+            }
+            app.mainClock.advanceTimeBy(400)
+            val middle=field.getUnclippedBoundsInRoot()
+            assertTrue(middle.left>resting.left&&middle.left<rightEdge)
+            app.mainClock.advanceTimeBy(420)
+            assertTrue("The entire field must slide past the viewport, including the right gutter",
+                field.getUnclippedBoundsInRoot().left>=rightEdge)
         } finally {app.mainClock.autoAdvance=true}
     }
 
@@ -242,8 +331,9 @@ class IdentityTransitionTest {
                 val next=PageHandoff(from,to)
                 app.runOnIdle {handoff=next;nav.navigate(to.route)}
                 var previousWidth=start.width
+                val sampleMillis=next.identityMillis/4L
                 for(sample in 1..3) {
-                    app.mainClock.advanceTimeBy(250)
+                    app.mainClock.advanceTimeBy(sampleMillis)
                     val image=app.onRoot().captureToImage()
                     val backing=avatarBounds(image)
                     val symbol=avatarBounds(image,symbol=true)
@@ -251,7 +341,7 @@ class IdentityTransitionTest {
                     assertEquals("The inner symbol must scale with its circle, not jump to target size",ratio,symbol.width/backing.width,.035f)
                     previousWidth=backing.width
                 }
-                app.mainClock.advanceTimeBy(next.totalMillis-750L+100)
+                app.mainClock.advanceTimeBy(next.totalMillis-3*sampleMillis+100)
                 val endImage=app.onRoot().captureToImage()
                 assertEquals(ratio,avatarBounds(endImage,symbol=true).width/avatarBounds(endImage).width,.035f)
                 from=to

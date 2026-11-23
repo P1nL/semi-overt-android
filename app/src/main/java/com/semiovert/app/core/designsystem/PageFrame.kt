@@ -8,43 +8,48 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.*
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import com.semiovert.app.core.model.*
 
 @Composable
-fun PageFrame(title: String,onBack: ()->Unit,tag: String,scroll: Boolean=true,actions: (@Composable ()->Unit)?=null,content: @Composable ColumnScope.()->Unit) {
+fun PageFrame(title: String,onBack: ()->Unit,tag: String,scroll: Boolean=true,actions: (@Composable ()->Unit)?=null,
+    titleStyle: TextStyle=MaterialTheme.typography.titleMedium,content: @Composable ColumnScope.()->Unit) {
     Box(Modifier.fillMaxSize().imePadding().navigationBarsPadding().testTag(tag)) {
         val body=Modifier.fillMaxSize().then(if(scroll)Modifier.verticalScroll(rememberScrollState()) else Modifier).padding(start=24.dp,end=24.dp,top=64.dp)
         Column(body,content=content)
         Row(Modifier.align(Alignment.TopCenter).fillMaxWidth().heightIn(min=64.dp).padding(horizontal=12.dp),verticalAlignment=Alignment.CenterVertically) {
             val backSpark=rememberSparkControl()
             IconButton(onClick=onBack,interactionSource=backSpark.source,modifier=backSpark.modifier.semantics {contentDescription="返回"}) {SoIcon(SoSymbol.ARROW,modifier=Modifier.graphicsLayer {rotationZ=180f})}
-            Text(title,style=MaterialTheme.typography.titleMedium,modifier=Modifier.weight(1f).semantics {heading()})
+            Text(title,style=titleStyle,modifier=Modifier.weight(1f).semantics {heading()})
             actions?.invoke()
         }
     }
 }
 
 @Composable
-fun DemoNotice(text: String="离线演示，不连接真实账号。请勿输入真实密码。") {
+fun DemoNotice(text: String="请填写以下信息") {
     Text(text,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.fillMaxWidth().padding(top=8.dp,bottom=20.dp))
 }
 
 @Composable
 fun ProfileAvatar(variant: Int=0,size: Int=56,backgroundColor: Color=MaterialTheme.colorScheme.secondary,
-    contentColor: Color=MaterialTheme.colorScheme.onSecondary) {
+    contentColor: Color=MaterialTheme.colorScheme.onSecondary,photo: ImageBitmap?=null) {
     Surface(shape=CircleShape,color=backgroundColor,modifier=Modifier.size(size.dp)) {
         // Shared-element bounds change every frame; scale the symbol with those bounds, not the final size argument.
-        Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center) {SoIcon(when(variant%3) {1->SoSymbol.BOOK;2->SoSymbol.HOME;else->SoSymbol.PERSON},modifier=Modifier.fillMaxSize(.48f),tint=contentColor)}
+        if(photo!=null) Image(photo,null,Modifier.fillMaxSize(),contentScale=ContentScale.Crop)
+        else Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center) {SoIcon(when(variant%3) {1->SoSymbol.BOOK;2->SoSymbol.HOME;else->SoSymbol.PERSON},modifier=Modifier.fillMaxSize(.48f),tint=contentColor)}
     }
 }
 
 @Composable
 fun SettingRow(label: String,detail: String?=null,onClick: ()->Unit) {
     Row(Modifier.fillMaxWidth().heightIn(min=60.dp).clickable(onClick=onClick).padding(vertical=10.dp),verticalAlignment=Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {Text(label,style=MaterialTheme.typography.bodyMedium);if(detail!=null)Text(detail,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
+        Column(Modifier.weight(1f)) {Text(label,style=MaterialTheme.typography.bodyMedium.withInterfaceTypeface());if(detail!=null)Text(detail,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
         SoIcon(SoSymbol.ARROW,modifier=Modifier.size(18.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

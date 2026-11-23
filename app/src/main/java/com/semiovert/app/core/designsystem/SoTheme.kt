@@ -6,41 +6,59 @@ import androidx.compose.runtime.Composable
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import com.semiovert.app.core.model.ThemeMode
 
-private val LightColors = lightColorScheme(
-    primary = Color(0xFF008564), onPrimary = Color.White,
-    primaryContainer = Color(0xFF6AF3BB), onPrimaryContainer = Color(0xFF004D38),
-    secondary = Color(0xFF6950D8), onSecondary = Color.White,
-    secondaryContainer = Color(0xFFE5DEF9), onSecondaryContainer = Color(0xFF3E287F),
-    tertiary = Color(0xFFAA482D), onTertiary = Color.White,
-    tertiaryContainer = Color(0xFFFFDFC7), onTertiaryContainer = Color(0xFF593A28),
-    background = Color(0xFFF7F6F2), onBackground = Color(0xFF202A25),
-    surface = Color(0xFFF7F6F2), onSurface = Color(0xFF202A25),
-    surfaceVariant = Color(0xFFDEEEE3), onSurfaceVariant = Color(0xFF456150),
-    outline = Color(0xFF77887D), outlineVariant = Color(0xFFD8DFD8),
-)
-private val DarkBackground = Color(0xFF191A1C)
-private val DarkColors = darkColorScheme(
-    primary = Color(0xFF82DFB8), onPrimary = Color(0xFF003827),
-    primaryContainer = Color(0xFF235440), onPrimaryContainer = Color(0xFFB9F5D7),
-    secondary = Color(0xFFD0BEFF), onSecondary = Color(0xFF372067),
-    secondaryContainer = Color(0xFF46376A), onSecondaryContainer = Color(0xFFEBDDFF),
-    tertiary = Color(0xFFFFB39B), onTertiary = Color(0xFF542616),
-    tertiaryContainer = Color(0xFF593F31), onTertiaryContainer = Color(0xFFFFDFCA),
-    background = DarkBackground, onBackground = Color(0xFFE4EBE2),
-    surface = DarkBackground, onSurface = Color(0xFFE4EBE2),
-    surfaceDim = DarkBackground, surfaceBright = DarkBackground,
-    surfaceContainerLowest = DarkBackground, surfaceContainerLow = DarkBackground,
-    surfaceContainer = DarkBackground, surfaceContainerHigh = DarkBackground,
-    surfaceContainerHighest = DarkBackground, surfaceTint = DarkBackground,
-    surfaceVariant = Color(0xFF2C4033), onSurfaceVariant = Color(0xFFBDCEC0),
-    outline = Color(0xFF91A194), outlineVariant = Color(0xFF3B4B3F),
-)
+val SoGreen = SoPalette.ForestGreen
+
+private fun Color.tintOn(surface: Color, amount: Float) = copy(alpha = amount).compositeOver(surface)
+
+private val LightColors = with(SoPalette) {
+    lightColorScheme(
+        primary = ForestGreen, onPrimary = Color.White,
+        primaryContainer = ForestGreen.tintOn(LightSurface, .10f), onPrimaryContainer = ForestGreen.tintOn(LightInk, .36f),
+        secondary = Amethyst, onSecondary = Color.White,
+        secondaryContainer = Amethyst.tintOn(LightSurface, .12f), onSecondaryContainer = Amethyst.tintOn(LightInk, .40f),
+        tertiary = AutumnLeaf.tintOn(DarkSurface, .70f), onTertiary = Color.White,
+        tertiaryContainer = CarrotOrange.tintOn(LightSurface, .18f), onTertiaryContainer = AutumnLeaf.tintOn(LightInk, .28f),
+        background = LightSurface, onBackground = LightInk, surface = LightSurface, onSurface = LightInk,
+        surfaceVariant = Teal.tintOn(LightSurface, .11f), onSurfaceVariant = LightInk.tintOn(LightSurface, .81f),
+        surfaceDim = Teal.tintOn(LightSurface, .14f), surfaceBright = LightSurface, surfaceTint = ForestGreen,
+        surfaceContainerLowest = Color.White, surfaceContainerLow = LightSurface,
+        surfaceContainer = Teal.tintOn(LightSurface, .04f), surfaceContainerHigh = Teal.tintOn(LightSurface, .07f),
+        surfaceContainerHighest = Teal.tintOn(LightSurface, .11f),
+        outline = LightInk.tintOn(LightSurface, .57f), outlineVariant = Teal.tintOn(LightSurface, .24f),
+        error = TomatoJam, onError = Color.White,
+        errorContainer = Tomato.tintOn(LightSurface, .21f), onErrorContainer = TomatoJam.tintOn(LightInk, .45f),
+        inverseSurface = DarkSurface, inverseOnSurface = DarkInk, inversePrimary = MintLeaf,
+    )
+}
+
+private val DarkColors = with(SoPalette) {
+    darkColorScheme(
+        primary = MintLeaf, onPrimary = DarkSurface,
+        primaryContainer = Teal.tintOn(DarkSurface, .30f), onPrimaryContainer = MintLeaf.tintOn(DarkInk, .28f),
+        secondary = Amethyst.tintOn(Color.White, .54f), onSecondary = DarkSurface,
+        secondaryContainer = Amethyst.tintOn(DarkSurface, .32f), onSecondaryContainer = Amethyst.tintOn(DarkInk, .24f),
+        tertiary = CarrotOrange, onTertiary = DarkSurface,
+        tertiaryContainer = CarrotOrange.tintOn(DarkSurface, .23f), onTertiaryContainer = CarrotOrange.tintOn(DarkInk, .30f),
+        background = DarkSurface, onBackground = DarkInk, surface = DarkSurface, onSurface = DarkInk,
+        surfaceVariant = Teal.tintOn(DarkSurface, .22f), onSurfaceVariant = DarkInk.tintOn(DarkSurface, .80f),
+        surfaceDim = DarkSurface, surfaceBright = DarkSurface, surfaceTint = DarkSurface,
+        surfaceContainerLowest = DarkSurface, surfaceContainerLow = DarkSurface,
+        surfaceContainer = DarkSurface, surfaceContainerHigh = DarkSurface, surfaceContainerHighest = DarkSurface,
+        outline = DarkInk.tintOn(DarkSurface, .46f), outlineVariant = Teal.tintOn(DarkSurface, .38f),
+        error = Tomato, onError = DarkSurface,
+        errorContainer = TomatoJam.tintOn(DarkSurface, .32f), onErrorContainer = Tomato.tintOn(DarkInk, .29f),
+        inverseSurface = LightSurface, inverseOnSurface = LightInk, inversePrimary = ForestGreen,
+    )
+}
+
+internal fun soColorScheme(dark: Boolean) = if (dark) DarkColors else LightColors
 
 private val SoTypography = Typography(
     headlineLarge = TextStyle(fontFamily = FontFamily.Serif, fontSize = 30.sp, lineHeight = 43.sp, fontWeight = FontWeight.Medium),
@@ -58,7 +76,7 @@ private val SoTypography = Typography(
 @Composable
 fun SoTheme(mode: ThemeMode = ThemeMode.SYSTEM, content: @Composable () -> Unit) {
     val dark = when (mode) { ThemeMode.SYSTEM -> isSystemInDarkTheme(); ThemeMode.DARK -> true; ThemeMode.LIGHT -> false }
-    val target=if(dark)DarkColors else LightColors
+    val target=soColorScheme(dark)
     val revealing=LocalThemeReveal.current?.running==true
     @Composable fun blend(value: Color)=animateColorAsState(value,tween(if(revealing)0 else motionMillis(220)),label="theme-color").value
     val colors=target.copy(
@@ -69,6 +87,8 @@ fun SoTheme(mode: ThemeMode = ThemeMode.SYSTEM, content: @Composable () -> Unit)
         surfaceVariant=blend(target.surfaceVariant),onSurfaceVariant=blend(target.onSurfaceVariant),outline=blend(target.outline),outlineVariant=blend(target.outlineVariant),
         surfaceDim=blend(target.surfaceDim),surfaceBright=blend(target.surfaceBright),surfaceTint=blend(target.surfaceTint),
         surfaceContainerLowest=blend(target.surfaceContainerLowest),surfaceContainerLow=blend(target.surfaceContainerLow),surfaceContainer=blend(target.surfaceContainer),surfaceContainerHigh=blend(target.surfaceContainerHigh),surfaceContainerHighest=blend(target.surfaceContainerHighest),
+        error=blend(target.error),onError=blend(target.onError),errorContainer=blend(target.errorContainer),onErrorContainer=blend(target.onErrorContainer),
+        inverseSurface=blend(target.inverseSurface),inverseOnSurface=blend(target.inverseOnSurface),inversePrimary=blend(target.inversePrimary),
     )
     MaterialTheme(colorScheme=colors,typography=SoTypography,content=content)
 }

@@ -49,8 +49,8 @@ internal object ArcAuthorAvatarMotion {
         val above=cardTop-EXPANDED_GAP-diameter
         val below=cardTop+g.cardHeight+EXPANDED_GAP
         val top=when {
+            below>=safeTop&&below+diameter<=safeBottom -> below
             above>=safeTop -> above
-            below+diameter<=safeBottom -> below
             else -> return null // A short viewport must not put the avatar over navigation/content.
         }
         val left=ArcDeckMath.pulledLeft(g)+g.cardWidth-diameter

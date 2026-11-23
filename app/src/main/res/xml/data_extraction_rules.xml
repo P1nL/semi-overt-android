@@ -5,15 +5,15 @@
 -->
 <data-extraction-rules>
     <cloud-backup>
+        <exclude domain="root" path="app_webview" />
+        <exclude domain="file" path="profile-media" />
         <!-- TODO: Use <include> and <exclude> to control what is backed up.
         <include .../>
         <exclude .../>
         -->
     </cloud-backup>
-    <!--
     <device-transfer>
-        <include .../>
-        <exclude .../>
+        <exclude domain="root" path="app_webview" />
+        <exclude domain="file" path="profile-media" />
     </device-transfer>
-    -->
 </data-extraction-rules>

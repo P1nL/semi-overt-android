@@ -24,6 +24,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.dp
+import com.semiovert.app.core.designsystem.withInterfaceDigits
 import com.semiovert.app.core.designsystem.LocalFlowRoll
 import com.semiovert.app.core.designsystem.solid.ArticleTexture
 import com.semiovert.app.core.designsystem.solid.SolidTexture
@@ -200,7 +201,7 @@ fun CuboidArticleDeck(
                 })
             }
         }
-        Text("向任意方向轻划 · ${selected+1} / ${articles.size}",
+        Text("向任意方向轻划 · ${selected+1} / ${articles.size}".withInterfaceDigits(),
             style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,
             modifier=Modifier.align(Alignment.BottomCenter).padding(bottom=96.dp).clearAndSetSemantics {})
         // Cache the article pool once; only six physical planes are drawn per frame.

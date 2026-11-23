@@ -1,11 +1,19 @@
 # Third-party asset provenance
 
-## Current guest identity icon
+## Current guest identity artwork
 
-The current guest intro and resting avatar are native vector renderings of the
-user-supplied SVG/Svelte snippet (a user outline with a 600ms head/body bounce),
-adapted to keep the shoulders stationary after rising and bounce only the head.
-They do not load or play the historical PNG sprites below.
+The guest avatars use the supplied `system-outline-2815-ghost-loop-cycle.json`
+(Ghost, `loop-cycle`), retained at `app/src/main/assets/identity/startup-ghost.json`.
+It is rendered by Lottie for Android (Apache 2.0). The static guest avatar fallback
+in `app/src/main/res/drawable/ic_guest_ghost.xml` is derived from its first frame.
+
+## Brand opening motion
+
+The four-point star and connected `Vert` paths follow the user's approved lettering
+draft and animation preview. `BrandIntroArtwork` draws them with native Compose paths.
+The handwriting speed curve references the opening animation at
+https://demos.gsap.com/ and is evaluated by `BrandIntroMotion`; no GSAP runtime is
+bundled in the Android application.
 
 ## Historical identity animation assets
 
@@ -24,3 +32,11 @@ provenance, not permission to redistribute the source under a new license; confi
 the original asset's applicable license before a public app release.
 
 Other in-app cover illustrations and line icons are implemented in repository code.
+
+## YuFanXinYu interface numerals
+
+The supplied YuFanXinYu (余繁新语) Regular and Bold fonts by chilingg are bundled
+as `0`–`9` subsets with raised and emboldened glyphs under the MIT License. The
+record calendar and profile counts also use an ExtraBold subset derived from the
+adjusted Bold outlines. The license is packaged at `app/src/main/assets/licenses/yufanxinyu.txt`. Article titles and body copy
+keep their existing typography. Shanghai Modeng is not bundled.

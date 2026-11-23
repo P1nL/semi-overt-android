@@ -33,12 +33,9 @@ class AvatarPixelMotionTest {
         }
     }
 
-    @Test fun pixelDurationAndFadesMatchTheWebPixelStage() {
+    @Test fun pixelDurationAndImageFadeMatchTheWebPixelStage() {
         assertEquals(750,AvatarPixelMotion.DURATION_MILLIS)
         assertEquals(.2f,AvatarPixelMotion.imageAlpha(0f),.0001f)
         assertEquals(1f,AvatarPixelMotion.imageAlpha(40f/750f),.0001f)
-        assertEquals(1f,AvatarPixelMotion.outlineAlpha(500f/750f),.0001f)
-        assertEquals(.5f,AvatarPixelMotion.outlineAlpha(625f/750f),.0001f)
-        assertEquals(0f,AvatarPixelMotion.outlineAlpha(1f),.0001f)
     }
 }

@@ -22,13 +22,14 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import com.semiovert.app.core.designsystem.ProfileAvatar
+import com.semiovert.app.core.designsystem.rememberRemoteImage
 import com.semiovert.app.core.model.Author
 import kotlinx.coroutines.isActive
 import kotlin.math.roundToInt
 
 /** A transparent rail behind the cards, not a fixed circular image-switching viewport. */
 @Composable
-internal fun ArcAuthorAvatar(author: Author,focusedArticleId: String,position: Float,dragging: Boolean,settling: Boolean,enabled: Boolean,
+internal fun ArcAuthorAvatar(author: Author,focusedArticleId: String,position: ()->Float,dragging: Boolean,settling: Boolean,enabled: Boolean,
     geometry: ArcDeckGeometry,modifier: Modifier=Modifier) {
     val latestPosition by rememberUpdatedState(position)
     val latestArticleId by rememberUpdatedState(focusedArticleId)
@@ -39,7 +40,7 @@ internal fun ArcAuthorAvatar(author: Author,focusedArticleId: String,position: F
         if(!enabled||dragging)return@LaunchedEffect
         val gate=ArcAvatarRestGate()
         while(isActive) {
-            val stable=withFrameNanos {gate.sample(latestPosition,latestArticleId,latestSettling,it/1_000_000L)}
+            val stable=withFrameNanos {gate.sample(latestPosition(),latestArticleId,latestSettling,it/1_000_000L)}
             if(stable) {
                 ready=true
                 break
@@ -76,7 +77,7 @@ private fun ArcAuthorAvatarRail(author: Author,visible: Boolean,geometry: ArcDec
         Box(Modifier.requiredSize(p.diameter.dp).testTag("home-browse-author-"+shown.id).clearAndSetSemantics {
             if(visible&&shown.id==author.id)contentDescription=shown.name+"的头像"
         },contentAlignment=Alignment.Center) {
-            ProfileAvatar(size=p.diameter.roundToInt(),
+            ProfileAvatar(size=p.diameter.roundToInt(),photo=rememberRemoteImage(shown.avatarUrl,320).bitmap,
                 backgroundColor=MaterialTheme.colorScheme.background,
                 contentColor=MaterialTheme.colorScheme.onBackground)
         }
@@ -100,7 +101,7 @@ internal fun ArcExpandedAuthorAvatar(author: Author,placement: ArcAuthorAvatarPl
         Box(Modifier.requiredSize(p.diameter.dp).testTag(tag).clearAndSetSemantics {
             if(visible)contentDescription=author.name+"的头像"
         },contentAlignment=Alignment.Center) {
-            ProfileAvatar(size=p.diameter.roundToInt(),backgroundColor=MaterialTheme.colorScheme.background,
+            ProfileAvatar(size=p.diameter.roundToInt(),photo=rememberRemoteImage(author.avatarUrl,320).bitmap,backgroundColor=MaterialTheme.colorScheme.background,
                 contentColor=MaterialTheme.colorScheme.onBackground)
         }
     }

@@ -16,7 +16,7 @@ import kotlinx.coroutines.flow.first
 /** All rectangles use boundsInRoot, including the measured reader destination. */
 enum class ArticleOrigin { HOME, STACK }
 data class ArticleSource(val article: Article,val card: Rect,val title: Rect,val author: Rect,val date: Rect,val duration: Rect,val ink: Color,
-    val origin: ArticleOrigin=ArticleOrigin.STACK,val stackLayer: Float?=null)
+    val origin: ArticleOrigin=ArticleOrigin.STACK,val stackLayer: Float?=null,val coverColor: Color?=null)
 /** Keep the full card crop even when a profile card extends below a LazyColumn viewport. */
 fun LayoutCoordinates.articleBoundsInRoot()=Rect(localToRoot(Offset.Zero),Size(size.width.toFloat(),size.height.toFloat()))
 @Stable class ReaderAnchors {
@@ -36,39 +36,60 @@ fun LayoutCoordinates.articleBoundsInRoot()=Rect(localToRoot(Offset.Zero),Size(s
     private val origins=mutableStateListOf<Pair<ArticleSource,ReaderAnchors>>()
     var motionEnabled=true
     var onStart: ()->Unit={}
+    internal var beforeHomeOpen: ((()->Unit)->Unit)={it()}
     private var navigate: ()->Unit={}
     private var job: Job?=null
     private var committed=false
     private var velocity=0f
+    private var openWithLift by mutableStateOf(false)
     val active get()=source!=null
+    val contentProgress get()=SceneMotion.readingContentProgress(progress,openWithLift&&!returning)
     fun begin(origin: ArticleSource,onRead: ()->Unit): Boolean {
         if(active)return false
         if(!motionEnabled||origin.card==Rect.Zero){onRead();return false}
-        job?.cancel();onStart();navigate=onRead;committed=false;settling=false;returning=false;progress=0f;velocity=0f;anchors=ReaderAnchors();source=origin
+        job?.cancel();onStart();navigate=onRead;committed=false;settling=false;returning=false;openWithLift=false;progress=0f;velocity=0f;anchors=ReaderAnchors();source=origin
         return true
     }
-    fun open(origin: ArticleSource,onRead: ()->Unit) {if(begin(origin,onRead))finish(true)}
-    fun drag(value: Float) {if(active&&!settling)progress=SceneMotion.readingDrag(value)}
-    fun release(velocityDp: Float) {if(active)finish(
+    fun open(origin: ArticleSource,openWithLift: Boolean=false,onRead: ()->Unit) {
+        if(active)return
+        val start: ()->Unit={if(begin(origin,onRead)) {
+            this.openWithLift=openWithLift&&origin.origin==ArticleOrigin.STACK
+            finish(true)
+        }}
+        if(origin.origin==ArticleOrigin.HOME&&motionEnabled&&origin.card!=Rect.Zero)beforeHomeOpen(start)
+        else start()
+    }
+    fun drag(value: Float) {
+        if(active&&!settling) {
+            progress=SceneMotion.readingDrag(value).coerceAtMost(SceneMotion.READING_DRAG_STAGE)
+            if(value>=1f)finish(true)
+        }
+    }
+    fun release(velocityDp: Float) {if(active&&!settling)finish(
         SceneMotion.commits(progress/SceneMotion.READING_DRAG_STAGE,velocityDp),SceneMotion.readingReleaseVelocity(velocityDp))}
     fun cancel() {if(active&&!committed&&!returning)finish(false)}
+    fun cancelDrag() {if(active&&!settling&&!committed&&!returning)finish(false)}
     private fun finish(commit: Boolean,initialVelocity: Float=velocity) {
         job?.cancel();settling=true
         job=scope.launch {
             val target=if(commit)1f else 0f
+            if(commit&&motionEnabled)snapshotFlow {anchors.title!=Rect.Zero&&anchors.author!=Rect.Zero&&
+                anchors.date!=Rect.Zero&&anchors.duration!=Rect.Zero}.first {it}
             animate(progress,target,initialVelocity=if(commit)0f else initialVelocity,
                 animationSpec=when {
                     !motionEnabled->snap()
-                    commit->SceneMotion.readingOpenSpec()
+                    commit->SceneMotion.readingOpenSpec(progress,source!!.origin,openWithLift)
                     else->SceneMotion.readingSpring()
                 }) {value,speed->progress=value;velocity=speed}
             progress=target;velocity=0f;settling=false
             if(commit){committed=true;navigate()}else source=null
         }
     }
+    internal fun isOpeningReader(id: String)=committed&&source?.article?.id==id
+
     /** The measured reader has entered composition; no duplicate route animation. */
     fun readerReady(id: String) {
-        if(committed&&source?.article?.id==id) {
+        if(isOpeningReader(id)) {
             origins.add(source!! to anchors);source=null;progress=0f;committed=false
         }
     }
@@ -83,12 +104,13 @@ fun LayoutCoordinates.articleBoundsInRoot()=Rect(localToRoot(Offset.Zero),Size(s
         job=scope.launch {
             // Reverse only once the real source is laid out again, not against an estimated card.
             snapshotFlow {sourceMeasured}.first {it}
-            animate(1f,0f,animationSpec=SceneMotion.readingCloseSpec()){value,speed->progress=value;velocity=speed}
+            animate(1f,0f,animationSpec=SceneMotion.readingCloseSpec(origin.first.origin)){value,speed->progress=value;velocity=speed}
             progress=0f;velocity=0f;source=null;returning=false;settling=false
         }
     }
+    fun needsSourceMeasurement(articleId: String)=returning&&!sourceMeasured&&source?.article?.id==articleId
     fun sourceReady(origin: ArticleSource) {
-        if(returning&&!sourceMeasured&&source?.article?.id==origin.article.id&&
+        if(needsSourceMeasurement(origin.article.id)&&
             listOf(origin.card,origin.title,origin.author,origin.date,origin.duration).none {it==Rect.Zero}) {
             source=origin;sourceMeasured=true
         }

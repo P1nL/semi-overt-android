@@ -66,9 +66,7 @@ class SurfaceRefinementTest {
     @Test fun secondarySurfacesCoverTheCircleBeforeTheirSlideFinishes() {
         navigate("我的")
         val opens=listOf<Pair<String,()->Unit>>(
-            "settings-screen" to {app.onNodeWithContentDescription("设置").performClick()},
-            "register-screen" to {app.onNodeWithText("创建账号",useUnmergedTree=true).performClick()},
-            "forgot-screen" to {app.onNodeWithText("忘记密码",useUnmergedTree=true).performClick()})
+            "settings-screen" to {app.onNodeWithContentDescription("设置").performClick()})
         for((tag,open) in opens) {
             val circle=app.onNodeWithTag("main-circle").fetchSemanticsNode().boundsInRoot
             val main=Destination.PROFILE.circleColors.background

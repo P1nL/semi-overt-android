@@ -12,14 +12,13 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.ClipOp
+import androidx.compose.ui.graphics.GraphicsContext
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.clipPath
-import androidx.compose.ui.graphics.layer.GraphicsLayer
-import androidx.compose.ui.graphics.layer.drawLayer
-import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalGraphicsContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -30,7 +29,8 @@ import kotlin.math.hypot
 internal const val THEME_REVEAL_MS=760
 
 @Stable
-internal class ThemeRevealState(private val scope: CoroutineScope,private val layer: GraphicsLayer) {
+internal class ThemeRevealState(private val scope: CoroutineScope,private val graphics: GraphicsContext) {
+    val frame=DrawFrameCapture()
     var running by mutableStateOf(false);private set
     var previous by mutableStateOf<ImageBitmap?>(null);private set
     var origin by mutableStateOf(Offset.Zero);private set
@@ -43,7 +43,7 @@ internal class ThemeRevealState(private val scope: CoroutineScope,private val la
         running=true
         scope.launch {
             try {
-                val old=layer.toImageBitmap()
+                val old=frame.capture(graphics)
                 progress.snapTo(0f);origin=center;previous=old
                 commit()
                 // The complete target palette is painted beneath the old frame before opening the mask.
@@ -59,9 +59,9 @@ internal val LocalThemeReveal=staticCompositionLocalOf<ThemeRevealState?> {null}
 /** One old-frame capture, not two independently composed apps or a per-frame screenshot. */
 @Composable
 fun ThemeRevealHost(content: @Composable ()->Unit) {
-    val layer=rememberGraphicsLayer()
+    val graphics=LocalGraphicsContext.current
     val scope=rememberCoroutineScope()
-    val reveal=remember(scope,layer) {ThemeRevealState(scope,layer)}
+    val reveal=remember(scope,graphics) {ThemeRevealState(scope,graphics)}
     val motion=LocalMotionEnabled.current
     SideEffect {reveal.motion=motion}
     BackHandler(reveal.running) {}
@@ -71,8 +71,7 @@ fun ThemeRevealHost(content: @Composable ()->Unit) {
         }.pointerInput(reveal.running) {
             if(reveal.running)awaitPointerEventScope {while(true)awaitPointerEvent(PointerEventPass.Initial).changes.forEach {it.consume()}}
         }.drawWithContent {
-            layer.record {this@drawWithContent.drawContent()}
-            drawLayer(layer)
+            reveal.frame.draw(this)
             reveal.previous?.let {old ->
                 val center=reveal.origin
                 val radius=(hypot(maxOf(center.x,size.width-center.x),maxOf(center.y,size.height-center.y))+2f)*reveal.progress.value

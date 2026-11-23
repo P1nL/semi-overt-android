@@ -17,17 +17,25 @@ internal const val READER_PAGE_NAVIGATION_KEY="reader-page-navigation"
 /** One handoff, two independent scene clocks. Scene-authored durations stay unchanged. */
 internal data class PageHandoff(val from: Destination?, val to: Destination,val profileGuest: Boolean=false,
     val sourceIsAuthor: Boolean=false,val targetIsAuthor: Boolean=false) {
+    private val enteringProfile=!targetIsAuthor&&to==Destination.PROFILE
+    private val enteringGuest=profileGuest&&enteringProfile
+    private val leavingGuest=profileGuest&&!sourceIsAuthor&&from==Destination.PROFILE
     // A null primary source denotes a reader leaving through its navigation menu.
-    val exitMillis = if(profileGuest&&!sourceIsAuthor&&from==Destination.PROFILE)SceneMotion.PROFILE_GUEST_MS
+    val exitMillis = if(leavingGuest)SceneMotion.PROFILE_GUEST_EXIT_MS
         else from?.let {exitMillis(it)} ?: SceneMotion.READER_PAGE_EXIT_MS
-    val enterMillis = if(profileGuest&&!targetIsAuthor&&to==Destination.PROFILE)SceneMotion.PROFILE_GUEST_MS else enterMillis(to)
+    val enterMillis = if(enteringGuest)SceneMotion.PROFILE_GUEST_ENTER_MS else enterMillis(to)
     // Start before the departing cards have cleared the viewport, not after an empty beat.
-    val overlapMillis = minOf(exitMillis / 2, enterMillis)
-    val enterDelayMillis = exitMillis - overlapMillis
-    val totalMillis = enterDelayMillis + enterMillis
+    val enterDelayMillis = if(enteringGuest)0 else
+        (exitMillis - minOf(exitMillis / 2, enterMillis) -
+            if(enteringProfile)SceneMotion.PROFILE_AVATAR_LEAD_REDUCTION_MS else 0).coerceAtLeast(0)
+    val overlapMillis = minOf(exitMillis - enterDelayMillis, enterMillis)
+    val totalMillis = maxOf(exitMillis, enterDelayMillis + enterMillis)
     val identityMillis = when {
-        profileGuest&&((!sourceIsAuthor&&from==Destination.PROFILE)||(!targetIsAuthor&&to==Destination.PROFILE)) -> SceneMotion.PROFILE_GUEST_MS
+        leavingGuest -> SceneMotion.PROFILE_GUEST_EXIT_MS
+        enteringGuest -> enterMillis
+        enteringProfile -> SceneMotion.PROFILE_AVATAR_ENTER_MS
         from==Destination.SEARCH||to==Destination.SEARCH -> SceneMotion.SEARCH_PRIMARY_MS
+        from==Destination.PROFILE -> SceneMotion.PROFILE_EXIT_MS
         else -> SceneMotion.PRIMARY_ELEMENT_MS
     }
 

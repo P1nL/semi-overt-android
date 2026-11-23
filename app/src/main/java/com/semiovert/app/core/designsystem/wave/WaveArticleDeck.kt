@@ -1,5 +1,6 @@
 package com.semiovert.app.core.designsystem.wave
 
+import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.clickable
@@ -23,7 +24,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun WaveArticleDeck(articles: List<Article>,selected: Int,onSelected: (Int)->Unit,onArticle: (String)->Unit,modifier: Modifier=Modifier,listTag: String="feed-category",deckTag: String="category-wave",frontTop: androidx.compose.ui.unit.Dp?=null,referenceHeight: androidx.compose.ui.unit.Dp?=null,
     visibleLimit: Int=WaveDeckMath.CATEGORY_VISIBLE,showCounter: Boolean=true,consumePageDrag: (Float)->Float={0f},
-    sceneDurationMillis: Int?=null,sceneStaggerMillis: Int=SceneMotion.DECK_STAGGER_MS,elasticEntrance: Boolean=false) {
+    sceneDurationMillis: Int?=null,sceneStaggerMillis: Int=SceneMotion.DECK_STAGGER_MS,entranceEase: Easing=SoSceneEase,
+    categoryLabel: String?=null,categoryLabelFrame: State<String>?=null,openWithLift: Boolean=false) {
     val ids=articles.map {it.id}
     var position by remember(ids) {mutableFloatStateOf(selected.toFloat())}
     var focusedPage by remember(ids) {mutableIntStateOf(selected)}
@@ -92,7 +94,14 @@ fun WaveArticleDeck(articles: List<Article>,selected: Int,onSelected: (Int)->Uni
         val ordered=poses.sortedByDescending {it.layer}
         val readingId=expansion?.source?.article?.id
         val departing=ordered.filter {articles[it.article].id!=readingId}
-        if(showCounter)DeckCounter(focused+1,articles.size,page=listTag.removePrefix("feed-"))
+        if(showCounter) {
+            val restOcclusionTop=categoryLabel?.let {
+                val lastVisibleDepth=(minOf(articles.size,visibleLimit.coerceAtLeast(1))-1).coerceAtLeast(0)
+                WaveDeckMath.stackTop(lastVisibleDepth.toFloat(),g).dp
+            }
+            DeckCounter(focused+1,articles.size,page=listTag.removePrefix("feed-"),
+                categoryLabel=categoryLabel,categoryLabelFrame=categoryLabelFrame,counterOcclusionTop=restOcclusionTop)
+        }
         Box(Modifier.fillMaxSize().testTag(deckTag)
             .waveDeckOverlay {interactive&&(dragging||settling)}
             .draggable(
@@ -137,7 +146,7 @@ fun WaveArticleDeck(articles: List<Article>,selected: Int,onSelected: (Int)->Uni
                     translationX=(pose.centerX-g.cardSize/2f)*density
                     val sceneOffset=SceneMotion.waveOffset(roll,phase,rank,poses.size,top,g.height,
                         sceneDurationMillis?:if(phase==FlowPhase.EXIT)SceneMotion.CATEGORY_EXIT_MS else SceneMotion.CATEGORY_ENTER_MS,
-                        sceneStaggerMillis,elasticEntrance)
+                        sceneStaggerMillis,entranceEase)
                     translationY=(top+(follower?.value?:0f)+sceneOffset+readingFollow+elastic)*density
                     scaleX=pose.scale;scaleY=pose.scale;alpha=pose.alpha
                 }.testTag("wave-card-"+article.id)) {
@@ -148,7 +157,7 @@ fun WaveArticleDeck(articles: List<Article>,selected: Int,onSelected: (Int)->Uni
                     CoverArticleCard(article,active,Modifier.fillMaxSize().then(semantics),"wave-cover-"+article.id,
                         topAligned=true,squareBottom=true,shortBottomBlur=true,interactable=interactive&&!dragging&&!settling,
                         onClick={if(active)read(article.id) else settleTo(WaveDeckMath.nearestPage(pose.article,position,articles.size))},
-                        allowLift=true,stackLayer=pose.layer,onRead={
+                        allowLift=true,stackLayer=pose.layer,openWithLift=openWithLift,onRead={
                             // Commit the source as the front card while the reader overlay covers the queue.
                             position=pose.article.toFloat();focusedPage=pose.article;select(pose.article)
                             read(article.id)

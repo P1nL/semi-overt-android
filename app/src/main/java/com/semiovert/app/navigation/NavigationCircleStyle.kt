@@ -7,15 +7,20 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import com.semiovert.app.R
 import com.semiovert.app.core.designsystem.CircleColors
 import com.semiovert.app.core.designsystem.SoEase
+import com.semiovert.app.core.designsystem.SoGreen
+import com.semiovert.app.core.designsystem.SoPalette
 import com.semiovert.app.core.designsystem.motionMillis
 
-private val HomeCircleColors=CircleColors(Color(0xFF00C98D),Color(0xFF12251E))
-private val CategoryCircleColors=CircleColors(Color(0xFFFF7A00),Color(0xFF291A0D))
-private val SearchCircleColors=CircleColors(Color(0xFF2962FF),Color.White)
-private val ProfileCircleColors=CircleColors(Color(0xFFA12BFF),Color.White)
+internal fun paletteCircleColors(swatch: Color)=CircleColors(swatch,SoPalette.inkOn(swatch))
+
+private val HomeCircleColors=paletteCircleColors(SoGreen)
+private val CategoryCircleColors=paletteCircleColors(SoPalette.CarrotOrange)
+private val SearchCircleColors=paletteCircleColors(SoPalette.FrenchBlue)
+private val ProfileCircleColors=paletteCircleColors(SoPalette.Amethyst)
 
 internal val Destination.circleColors: CircleColors get()=when(this) {
     Destination.HOME -> HomeCircleColors
@@ -25,6 +30,8 @@ internal val Destination.circleColors: CircleColors get()=when(this) {
 }
 
 internal val NavigationLabelFont=FontFamily(Font(R.font.navigation_label_rounded,FontWeight.Bold))
+internal val NavigationCircleSize=52.dp
+internal val NavigationCircleIconSize=24.dp
 
 @Composable
 internal fun animatedCircleColors(target: CircleColors,label: String): CircleColors {

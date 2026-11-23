@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Semi-Overt · 卡片动画观察台</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="viewer.css">
+</head>
+<body>
+  <main>
+    <header class="masthead">
+      <div>
+        <h1>卡片动画<span>观察台</span></h1>
+        <p>当前 Android 原生画面 · 每帧 16 ms · 拖动时间轴，停在你想调整的瞬间</p>
+      </div>
+      <span class="wordmark">Semi-Overt</span>
+    </header>
+
+    <div class="toolbar" aria-label="播放设置">
+      <div class="speed-controls">
+        <span>播放速度</span>
+        <div class="speed-presets" aria-label="常用倍速">
+          <button type="button" data-speed=".1">0.1×</button>
+          <button type="button" data-speed=".25">0.25×</button>
+          <button type="button" data-speed=".5" aria-pressed="true">0.5×</button>
+          <button type="button" data-speed="1">1×</button>
+          <button type="button" data-speed="2">2×</button>
+          <button type="button" data-speed="4">4×</button>
+        </div>
+        <label class="custom-speed"><input id="speed" type="number" min="0.1" max="4" step="0.05" value="0.5" aria-label="自定义播放倍速"><span>×</span></label>
+      </div>
+      <div class="toggles">
+        <label><input id="sync" type="checkbox" checked>同步对照</label>
+        <label><input id="loop" type="checkbox">循环播放</label>
+      </div>
+    </div>
+
+    <section class="viewers" aria-label="动画对照">
+      <article class="viewer" id="home">
+        <div class="viewer-heading">
+          <h2>首页</h2>
+          <select id="home-clip" aria-label="首页动画片段" disabled>
+            <option value="home-closing" selected>返回来源卡片 · 收起</option>
+            <option value="home-reading">再次点击 · 展开阅读</option>
+            <option value="home-lift">首次点击 · 选卡上浮</option>
+            <option value="home-lowering">取消选卡 · 选卡回落</option>
+          </select>
+        </div>
+        <div class="screen-surround">
+          <button class="phone" type="button" aria-label="播放或暂停首页动画" disabled>
+            <canvas width="540" height="1200" role="img" aria-label="首页原生动画逐帧画面"></canvas>
+          </button>
+          <span class="loading">正在载入原生帧…</span>
+        </div>
+        <div class="local-controls">
+          <button type="button" data-action="play" disabled>播放</button>
+          <button type="button" data-action="restart" disabled>重播</button>
+          <output class="clock">0 / 1264 ms</output>
+        </div>
+        <input class="seek" type="range" min="0" max="1264" step="16" value="0" aria-label="首页动画时间轴" disabled>
+        <div class="stage-readout"><span class="stage">起始画面</span><span class="frame">帧 0</span></div>
+      </article>
+
+      <article class="viewer" id="category">
+        <div class="viewer-heading">
+          <h2>分类页</h2>
+          <select id="category-clip" aria-label="分类页动画片段" disabled>
+            <option value="category-closing" selected>返回来源卡片 · 收起</option>
+            <option value="category-reading">点击前卡 · 完整展开</option>
+            <option value="category-drag">上提至边界 · 后续动作</option>
+          </select>
+        </div>
+        <div class="screen-surround">
+          <button class="phone" type="button" aria-label="播放或暂停分类页动画" disabled>
+            <canvas width="540" height="1200" role="img" aria-label="分类页原生动画逐帧画面"></canvas>
+          </button>
+          <span class="loading">正在载入原生帧…</span>
+        </div>
+        <div class="local-controls">
+          <button type="button" data-action="play" disabled>播放</button>
+          <button type="button" data-action="restart" disabled>重播</button>
+          <output class="clock">0 / 1264 ms</output>
+        </div>
+        <input class="seek" type="range" min="0" max="1264" step="16" value="0" aria-label="分类页动画时间轴" disabled>
+        <div class="stage-readout"><span class="stage">起始画面</span><span class="frame">帧 0</span></div>
+      </article>
+    </section>
+
+    <section class="transport" aria-label="共同播放控制">
+      <div class="transport-buttons">
+        <button id="play-all" class="primary" type="button" disabled>同时播放</button>
+        <button id="restart-all" type="button" disabled>从头重播</button>
+        <span class="divider"></span>
+        <button id="prev" type="button" disabled>前一帧</button>
+        <button id="next" type="button" disabled>后一帧</button>
+      </div>
+      <p class="keyboard">空格播放 / 暂停 <span>← → 逐帧</span></p>
+    </section>
+
+    <section class="phases" aria-label="动画阶段">
+      <div class="phase-heading">
+        <h2 id="phase-title">观察展开的节奏</h2>
+        <span>点阶段可定位；阶段可以重叠</span>
+      </div>
+      <div id="phase-buttons" class="phase-buttons">
+        <button type="button" data-progress=".12" data-closing-progress=".92"><span>首页标题匀速上升</span><small>550 ms 到位 · 背景原地淡出</small></button>
+        <button type="button" data-progress=".55" data-closing-progress=".70"><span>首页正文接入</span><small>标题启动 250 ms 后</small></button>
+        <button type="button" data-progress=".65" data-closing-progress=".45"><span>分类文案减速落位</span><small>容器和背景逐渐淡出</small></button>
+        <button type="button" data-progress=".80" data-closing-progress=".12"><span>首页标题已到位</span><small>正文继续进入至 730 ms</small></button>
+      </div>
+      <p id="phase-note">首页标题用 550 ms 匀速到位；正文仅错峰 250 ms，以 480 ms 进入，整段在 730 ms 完成。分类仍为 1200 ms：上提到 160 dp 后文案减速上升，容器固定尺寸淡出。同步开启时，阶段按钮将两段定位到同一实际时间。</p>
+    </section>
+    <p id="status" class="status" role="status">载入原生动画画面…</p>
+  </main>
+  <script src="viewer.js"></script>
+</body>
+</html>

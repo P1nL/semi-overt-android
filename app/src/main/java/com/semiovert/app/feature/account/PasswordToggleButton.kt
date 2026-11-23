@@ -3,13 +3,14 @@ package com.semiovert.app.feature.account
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.IconToggleButton
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -18,6 +19,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.semiovert.app.core.designsystem.LocalMotionEnabled
@@ -42,9 +44,10 @@ internal fun PasswordToggleButton(visible: Boolean,onVisibleChange: (Boolean)->U
     }
     val ink=MaterialTheme.colorScheme.onSurfaceVariant
     val glint=MaterialTheme.colorScheme.background
-    val spark=com.semiovert.app.core.designsystem.rememberSparkControl()
-    IconToggleButton(checked=visible,onCheckedChange=onVisibleChange,interactionSource=spark.source,modifier=modifier.size(48.dp).then(spark.modifier)
-        .clip(RoundedCornerShape(12.dp)).semantics {contentDescription=if(visible)"隐藏密码" else "显示密码"}) {
+    val source=remember {MutableInteractionSource()}
+    Box(modifier.size(48.dp).toggleable(visible,interactionSource=source,indication=null,
+        role=Role.Checkbox,onValueChange=onVisibleChange)
+        .semantics {contentDescription=if(visible)"隐藏密码" else "显示密码"},contentAlignment=Alignment.Center) {
         Canvas(Modifier.size(24.dp)) {
             scale(size.width/24f,size.height/24f,pivot=Offset.Zero) {
                 val upperY=4f+16f*lid.value

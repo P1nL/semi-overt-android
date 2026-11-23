@@ -52,20 +52,29 @@ class ArcAuthorAvatarMotionTest {
         assertTrue(gate.sample(.43f,"first",false,120))
     }
 
-    @Test fun expandedAvatarPrefersAboveAndKeepsTheCardsRightEdge() {
+    @Test fun expandedAvatarPrefersBelowAndKeepsTheCardsRightEdge() {
         val g=ArcDeckMath.geometry(400f,850f)
         val p=ArcAuthorAvatarMotion.expandedPlacement(g,220f,80f,760f)!!
-        assertEquals(220f-ArcAuthorAvatarMotion.EXPANDED_GAP,p.top+p.diameter,.001f)
+        assertEquals(220f+g.cardHeight+ArcAuthorAvatarMotion.EXPANDED_GAP,p.top,.001f)
         assertEquals(ArcDeckMath.pulledLeft(g)+g.cardWidth,p.left+p.diameter,.001f)
         assertEquals(ArcAuthorAvatarMotion.placement(g).diameter,p.diameter,0f)
         assertTrue(p.left+p.hiddenOffset>g.width)
     }
 
-    @Test fun expandedAvatarFallsBelowWhenTheHeaderLeavesNoUpperSpace() {
+    @Test fun expandedAvatarFallsAboveWhenNavigationLeavesNoLowerSpace() {
         val g=ArcDeckMath.geometry(400f,850f)
-        val p=ArcAuthorAvatarMotion.expandedPlacement(g,80f,80f,760f)!!
-        assertEquals(80f+g.cardHeight+ArcAuthorAvatarMotion.EXPANDED_GAP,p.top,.001f)
-        assertTrue(p.top+p.diameter<=760f)
+        val p=ArcAuthorAvatarMotion.expandedPlacement(g,450f,142f,760f)!!
+        assertEquals(450f-ArcAuthorAvatarMotion.EXPANDED_GAP,p.top+p.diameter,.001f)
+        assertTrue(p.top>=142f)
+    }
+
+    @Test fun expandedAvatarAvoidsTheThemeButtonEvenWhenAnUpperSlotExists() {
+        val g=ArcDeckMath.geometry(400f,850f)
+        val avatarSafeTop=80f+48f+ArcAuthorAvatarMotion.EXPANDED_GAP
+        val p=ArcAuthorAvatarMotion.expandedPlacement(g,180f,avatarSafeTop,760f)!!
+        assertEquals(180f+g.cardHeight+ArcAuthorAvatarMotion.EXPANDED_GAP,p.top,.001f)
+        assertTrue(p.top>=avatarSafeTop)
+        assertNull(ArcAuthorAvatarMotion.expandedPlacement(g,180f,avatarSafeTop,480f))
     }
 
     @Test fun shortViewportsDoNotForceTheAvatarOverTheHeaderOrNavigation() {

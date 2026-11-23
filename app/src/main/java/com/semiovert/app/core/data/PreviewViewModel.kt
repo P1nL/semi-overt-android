@@ -3,9 +3,12 @@ package com.semiovert.app.core.data
 import android.app.Application
 import android.content.Context
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
 import com.semiovert.app.core.model.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -16,7 +19,9 @@ class PreviewViewModel(application: Application): AndroidViewModel(application) 
     val state=mutable.asStateFlow()
     private fun read()=PreviewState(
         signedIn=preferences.getBoolean("demo_signed_in",false),
-        profile=PreviewProfile(preferences.getString("name",null)?:"林间来信",preferences.getString("handle",null)?:"offline_reader",preferences.getString("bio",null)?:"记录散步、天气与生活中的小事。",preferences.getInt("avatar",0),Cover.entries.find {it.name==preferences.getString("cover",null)}),
+        profile=PreviewProfile(preferences.getString("name",null)?:"林间来信",preferences.getString("handle",null)?:"reader",preferences.getString("bio",null)?:"记录散步、天气与生活中的小事。",preferences.getInt("avatar",0),Cover.entries.find {it.name==preferences.getString("cover",null)},
+            avatarPhoto=preferences.getString("avatar_photo",null),coverPhoto=preferences.getString("cover_photo",null),
+            coverPosition=preferences.getFloat("cover_position",.5f).coerceIn(0f,1f)),
         theme=ThemeMode.entries.find {it.name==preferences.getString("theme",null)}?:ThemeMode.SYSTEM,
         snapshots=preferences.getBoolean("snapshot_preview",false),snapshotsCleared=preferences.getBoolean("snapshot_examples_cleared",false),
         placement=NavigationPlacement(preferences.getFloat("nav_x",1f).coerceIn(0f,1f),preferences.getFloat("nav_y",0f).coerceIn(0f,1f)),
@@ -25,6 +30,8 @@ class PreviewViewModel(application: Application): AndroidViewModel(application) 
     private fun update(next: PreviewState) {
         preferences.edit().putBoolean("demo_signed_in",next.signedIn).putString("name",next.profile.name).putString("handle",next.profile.handle)
             .putString("bio",next.profile.bio).putInt("avatar",next.profile.avatar).putString("cover",next.profile.cover?.name)
+            .putString("avatar_photo",next.profile.avatarPhoto).putString("cover_photo",next.profile.coverPhoto)
+            .putFloat("cover_position",next.profile.coverPosition)
             .putString("theme",next.theme.name).putBoolean("snapshot_preview",next.snapshots).putBoolean("snapshot_examples_cleared",next.snapshotsCleared)
             .putFloat("nav_x",next.placement.x).putFloat("nav_y",next.placement.y)
             .putString("nav_shortcuts",JSONArray().apply {next.shortcuts.forEach {put(JSONObject().put("route",it.route).put("x",it.x).put("y",it.y))}}.toString()).apply()
@@ -32,7 +39,17 @@ class PreviewViewModel(application: Application): AndroidViewModel(application) 
     }
     fun signIn()=update(state.value.copy(signedIn=true))
     fun signOut()=update(state.value.copy(signedIn=false))
-    fun profile(value: PreviewProfile)=update(state.value.copy(profile=value))
+    fun profile(value: PreviewProfile) {
+        val previous=state.value.profile
+        update(state.value.copy(profile=value))
+        if(previous.avatarPhoto!=value.avatarPhoto||previous.coverPhoto!=value.coverPhoto) {
+            viewModelScope.launch(Dispatchers.IO) {
+                val context=getApplication<Application>()
+                if(previous.avatarPhoto!=value.avatarPhoto)ProfileImages.delete(context,previous.avatarPhoto)
+                if(previous.coverPhoto!=value.coverPhoto)ProfileImages.delete(context,previous.coverPhoto)
+            }
+        }
+    }
     fun theme(value: ThemeMode)=update(state.value.copy(theme=value))
     fun nextTheme()=theme(state.value.theme.next())
     fun snapshots(value: Boolean)=update(state.value.copy(snapshots=value))

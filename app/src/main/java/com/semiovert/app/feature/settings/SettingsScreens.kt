@@ -24,7 +24,10 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.*
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.semiovert.app.core.data.PreviewViewModel
+import com.semiovert.app.core.data.LocalBusiness
+import com.semiovert.app.core.data.userMessage
 import com.semiovert.app.core.designsystem.*
 import com.semiovert.app.core.model.*
 import com.semiovert.app.navigation.ScreenRoutes
@@ -32,19 +35,27 @@ import com.semiovert.app.navigation.Destination
 import com.semiovert.app.navigation.circleColors
 import com.semiovert.app.feature.home.LocalHomeSnapshot
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
 @Composable
 fun SettingsScreen(state: PreviewState,model: PreviewViewModel,onBack: ()->Unit,onRoute: (String)->Unit,onSignOut: ()->Unit) {
+    val business=LocalBusiness.current
+    val owner=business?.session?.collectAsStateWithLifecycle()?.value?.account?.id
+    val scope=rememberCoroutineScope()
+    var busy by remember {mutableStateOf(false)}
+    var serverError by remember {mutableStateOf<String?>(null)}
     var confirmation by remember {mutableStateOf<String?>(null)}
-    PageFrame("设置",onBack,"settings-screen") {
-        DemoNotice("离线页面与本机偏好；账号和真实文章保存尚未接入。")
-        Text("外观",style=MaterialTheme.typography.titleMedium)
+    val sectionTitle=MaterialTheme.typography.titleMedium.withInterfaceTypeface()
+    val itemTitle=MaterialTheme.typography.bodyMedium.withInterfaceTypeface()
+    PageFrame("设置",onBack,"settings-screen",titleStyle=sectionTitle) {
+        Text("外观",style=sectionTitle)
         val dark=MaterialTheme.colorScheme.background.luminance()<.5f
         Row(Modifier.fillMaxWidth().heightIn(min=80.dp),verticalAlignment=Alignment.CenterVertically) {
             Column(Modifier.weight(1f).padding(end=16.dp)) {
-                Text("跟随系统",style=MaterialTheme.typography.bodyMedium)
+                Text("跟随系统",style=itemTitle)
                 Text(if(state.theme==ThemeMode.SYSTEM)"随系统自动切换浅色和深色" else "在首页头像下方切换主题",
                     style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -56,30 +67,51 @@ fun SettingsScreen(state: PreviewState,model: PreviewViewModel,onBack: ()->Unit,
         SettingRow("调整导航位置","在底部安全区域移动主圆") {onRoute(ScreenRoutes.NAV_POSITION)}
         HorizontalDivider(color=MaterialTheme.colorScheme.outlineVariant)
         Row(Modifier.fillMaxWidth().heightIn(min=72.dp),verticalAlignment=Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {Text("本地修改记录",style=MaterialTheme.typography.bodyMedium);Text(if(state.signedIn)"仅预览内置快照，不采集真实修改" else "进入演示身份后可体验",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
+            Column(Modifier.weight(1f)) {Text("本地修改记录",style=itemTitle);Text(if(state.signedIn)"查看文章增删与版本对比" else "登录后使用",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
             val spark=rememberSparkControl()
-            Switch(checked=state.snapshots,onCheckedChange={if(it)confirmation="enable" else model.snapshots(false)},enabled=state.signedIn,interactionSource=spark.source,modifier=spark.modifier.semantics {contentDescription="本地修改记录开关"})
+            Switch(checked=state.snapshots,onCheckedChange={
+                if(it)confirmation="enable"
+                else if(business==null)model.snapshots(false)
+                else if(owner!=null)business.history.enable(owner,false)
+            },enabled=state.signedIn,interactionSource=spark.source,modifier=spark.modifier.semantics {contentDescription="本地修改记录开关"})
         }
-        SettingRow("查看记录","月历、日期详情与版本示例") {onRoute(if(state.signedIn)ScreenRoutes.RECORDS else Destination.PROFILE.route)}
-        SettingRow("清除本地记录","只清除本机演示快照，不影响汇总") {confirmation="clear"}
-        if(state.snapshotsCleared) {
+        if(business==null||owner!=null) SettingRow("清除本地记录","清除快照，保留每日汇总") {confirmation="clear"}
+        if(business!=null&&owner!=null) SettingRow("创作记录","查看创作日历") {onRoute(ScreenRoutes.RECORDS)}
+        if(business==null&&state.snapshotsCleared) {
             val spark=rememberSparkControl()
-            TextButton(onClick=model::restoreExamples,interactionSource=spark.source,modifier=spark.modifier) {Text("恢复内置示例快照")}
+            TextButton(onClick=model::restoreExamples,interactionSource=spark.source,modifier=spark.modifier) {Text("恢复本地快照")}
         }
         HorizontalDivider(Modifier.padding(vertical=16.dp),color=MaterialTheme.colorScheme.outlineVariant)
-        Text("账号",style=MaterialTheme.typography.titleMedium,modifier=Modifier.padding(bottom=8.dp))
-        SettingRow("重置密码","离线表单流程，不会修改真实密码") {onRoute(ScreenRoutes.FORGOT)}
-        SettingRow("页面状态预览","加载、空、错误与恢复") {onRoute(ScreenRoutes.STATES)}
+        Text("账号",style=sectionTitle,modifier=Modifier.padding(bottom=8.dp))
+        SettingRow("重置密码","验证邮箱并设置新密码") {onRoute(ScreenRoutes.FORGOT)}
         if(state.signedIn) {
             val spark=rememberSparkControl()
-            OutlinedButton(onClick={confirmation="logout"},interactionSource=spark.source,modifier=Modifier.fillMaxWidth().padding(top=20.dp).heightIn(min=52.dp).then(spark.modifier)) {Text("退出演示身份")}
+            OutlinedButton(onClick={confirmation="logout"},enabled=!busy,interactionSource=spark.source,modifier=Modifier.fillMaxWidth().padding(top=20.dp).heightIn(min=52.dp).then(spark.modifier)) {Text(if(busy)"正在退出…" else "退出登录")}
         }
+        serverError?.let { Text(it,Modifier.padding(top=12.dp),color=MaterialTheme.colorScheme.error) }
         Spacer(Modifier.height(32.dp))
     }
     when(confirmation) {
-        "enable"->ConfirmationSheet("开启本地修改记录？","本轮只演示内置文章增删和 Diff，不采集真实保存历史。关闭开关不会删除已有示例。",onConfirm={model.snapshots(true);confirmation=null},onDismiss={confirmation=null})
-        "clear"->ConfirmationSheet("清除本地记录？","只清除本设备的演示快照显示状态；每日汇总仍保留，不影响真实账号或服务器。",confirm="清除",onConfirm={model.clearSnapshots();confirmation=null},onDismiss={confirmation=null})
-        "logout"->ConfirmationSheet("退出演示身份？","回到未登录页面。不会调用服务器，也不会删除本机资料偏好。",confirm="退出",onConfirm={confirmation=null;model.signOut();onSignOut()},onDismiss={confirmation=null})
+        "enable"->ConfirmationSheet("开启修改记录？","保存到云端之后，才会在本机记录正文增删。",onConfirm={
+            if(business==null)model.snapshots(true) else if(owner!=null)business.history.enable(owner,true)
+            confirmation=null
+        },onDismiss={confirmation=null})
+        "clear"->ConfirmationSheet("清除本地记录？","清除本机快照，保留每日汇总。",confirm="清除",onConfirm={
+            if(business==null)model.clearSnapshots() else if(owner!=null)scope.launch {business.history.clear(owner)}
+            confirmation=null
+        },onDismiss={confirmation=null})
+        "logout"->ConfirmationSheet("退出登录？","退出后可重新登录。",confirm="退出",onConfirm={
+            confirmation=null
+            if(business==null){model.signOut();onSignOut()} else {
+                busy=true;serverError=null
+                scope.launch {
+                    try { business.signOut();onSignOut() }
+                    catch(error: CancellationException) { throw error }
+                    catch(error: Exception) { serverError=error.userMessage() }
+                    finally { busy=false }
+                }
+            }
+        },onDismiss={confirmation=null})
     }
 }
 
@@ -100,7 +132,7 @@ fun NavigationPositionScreen(initial: NavigationPlacement,onBack: ()->Unit,onSav
         }
     }
     BackHandler(onBack=onBack)
-    BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).testTag("navigation-position-screen")) {
+    BoxWithConstraints(Modifier.fillMaxSize().testTag("navigation-position-screen")) {
         snapshot?.let {Image(it,null,Modifier.fillMaxSize().testTag("position-home-snapshot"),contentScale=ContentScale.FillBounds)}
         val bottomInset=WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
         // Only mark the actual swept bounds of the 56dp circle and its 140dp vertical travel.
@@ -119,7 +151,7 @@ fun NavigationPositionScreen(initial: NavigationPlacement,onBack: ()->Unit,onSav
         Box(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(start=20.dp,end=20.dp,bottom=18.dp)
             .fillMaxWidth().height(adjustmentHeight).testTag("position-adjustment-area")
             .clip(RoundedCornerShape(24.dp)).background(background.copy(alpha=.42f)),contentAlignment=Alignment.Center) {
-            Text("拖动调整",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurface,
+            Text("拖动调整",style=MaterialTheme.typography.bodyMedium.withInterfaceTypeface(),color=MaterialTheme.colorScheme.onSurface,
                 modifier=Modifier.testTag("position-adjustment-hint"))
         }
         val saveSpark=rememberSparkControl()

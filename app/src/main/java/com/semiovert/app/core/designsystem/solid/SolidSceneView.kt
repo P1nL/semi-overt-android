@@ -5,12 +5,10 @@ import android.graphics.Bitmap
 import android.graphics.SurfaceTexture
 import android.opengl.*
 import android.os.Handler
-import android.os.Build
 import android.os.HandlerThread
 import android.util.Log
 import android.view.Surface
 import android.view.TextureView
-import com.semiovert.app.core.designsystem.MotionFramePolicy
 import java.util.concurrent.atomic.AtomicBoolean
 
 data class SolidTexture(val id: String,val bitmap: Bitmap,val backColor: Int)
@@ -98,7 +96,6 @@ private class SolidRenderer(context: Context,texture: SurfaceTexture,private var
     private val depthBuffer=IntArray(1)
 
     init {
-        if(Build.VERSION.SDK_INT>=30)surface.setFrameRate(MotionFramePolicy.TARGET_FPS,Surface.FRAME_RATE_COMPATIBILITY_DEFAULT)
         check(display!=EGL14.EGL_NO_DISPLAY&&EGL14.eglInitialize(display,IntArray(2),0,IntArray(2),0)) {"EGL display unavailable"}
         fun choose(samples: Int): EGLConfig? {
             val attributes=intArrayOf(EGL14.EGL_RENDERABLE_TYPE,EGL14.EGL_OPENGL_ES2_BIT,EGL14.EGL_SURFACE_TYPE,EGL14.EGL_WINDOW_BIT,EGL14.EGL_RED_SIZE,8,EGL14.EGL_GREEN_SIZE,8,EGL14.EGL_BLUE_SIZE,8,EGL14.EGL_ALPHA_SIZE,8,EGL14.EGL_DEPTH_SIZE,24,EGL14.EGL_SAMPLE_BUFFERS,if(samples>0)1 else 0,EGL14.EGL_SAMPLES,samples,EGL14.EGL_NONE)

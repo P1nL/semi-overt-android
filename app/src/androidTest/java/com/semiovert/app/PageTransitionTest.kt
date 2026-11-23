@@ -53,16 +53,19 @@ class PageTransitionTest {
         content()
         app.mainClock.autoAdvance=false
         try {
+            val motion=PageHandoff(Destination.HOME,Destination.CATEGORY)
             app.runOnIdle {
-                handoff=PageHandoff(Destination.HOME,Destination.CATEGORY)
+                handoff=motion
                 controller.navigate(Destination.CATEGORY.route)
             }
-            app.mainClock.advanceTimeBy(400)
+            val beforeOverlap=motion.enterDelayMillis-64L
+            val midOverlap=motion.enterDelayMillis+motion.overlapMillis/2L
+            app.mainClock.advanceTimeBy(beforeOverlap)
             app.runOnIdle {
                 assertTrue(samples.getValue(Destination.HOME).first in .3f.. .6f)
                 assertEquals(1f,samples.getValue(Destination.CATEGORY).first,.001f)
             }
-            app.mainClock.advanceTimeBy(350)
+            app.mainClock.advanceTimeBy(midOverlap-beforeOverlap)
             app.runOnIdle {
                 val old=samples.getValue(Destination.HOME)
                 val next=samples.getValue(Destination.CATEGORY)
@@ -73,7 +76,7 @@ class PageTransitionTest {
                 assertNotEquals(old.first,next.first)
                 assertNotEquals(Lifecycle.State.RESUMED,controller.currentBackStackEntry!!.lifecycle.currentState)
             }
-            app.mainClock.advanceTimeBy(1000)
+            app.mainClock.advanceTimeBy(motion.totalMillis-midOverlap+64L)
             app.runOnIdle {
                 assertFalse(samples.containsKey(Destination.HOME))
                 assertEquals(0f,samples.getValue(Destination.CATEGORY).first,.001f)

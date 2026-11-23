@@ -107,7 +107,7 @@ internal fun ArticleTexture(article: Article,height: Dp=352.dp,onReady: (SolidTe
             if(article.cover==null&&article.summary!=null)Text(article.summary,style=MaterialTheme.typography.bodyMedium,maxLines=4,overflow=TextOverflow.Ellipsis,modifier=Modifier.padding(start=18.dp,end=18.dp,top=118.dp))
             Row(Modifier.align(Alignment.BottomStart).padding(start=18.dp,bottom=56.dp),verticalAlignment=Alignment.CenterVertically) {
                 SoIcon(SoSymbol.CLOCK,tint=foreground,modifier=Modifier.size(15.dp))
-                Text("约 "+article.minutes+" 分钟",style=MaterialTheme.typography.labelMedium,modifier=Modifier.padding(start=5.dp))
+                Text(("约 "+article.minutes+" 分钟").withInterfaceDigits(),style=MaterialTheme.typography.labelMedium,modifier=Modifier.padding(start=5.dp))
             }
             Row(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(start=18.dp,end=18.dp,bottom=16.dp),verticalAlignment=Alignment.CenterVertically) {
                 ProfileAvatar(size=26)

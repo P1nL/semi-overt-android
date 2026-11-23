@@ -2,6 +2,11 @@ package com.semiovert.app.core.model
 
 enum class ReadingDuration(val label: String) {
     QUICK("<3 min"), MEDIUM("3~8 min"), LONG(">8 min");
+    val apiCode get() = when (this) {
+        QUICK -> "QUICK"
+        MEDIUM -> "SHORT"
+        LONG -> "DEEP"
+    }
     fun accepts(minutes: Int): Boolean = when (this) {
         QUICK -> minutes < 3
         MEDIUM -> minutes in 3..8
@@ -18,7 +23,7 @@ enum class ThemeMode(val label: String) {
     fun next(): ThemeMode = entries[(ordinal + 1) % entries.size]
 }
 
-data class Author(val id: String, val name: String, val bio: String)
+data class Author(val id: String, val name: String, val bio: String, val avatarUrl: String? = null, val handle: String = "")
 data class ArticleSection(val id: String, val title: String, val paragraphs: List<String>)
 data class Article(
     val id: String,
@@ -30,4 +35,7 @@ data class Article(
     val cover: Cover?,
     val tone: CardTone,
     val sections: List<ArticleSection>,
+    val coverUrl: String? = null,
+    val coverColor: String? = null,
+    val markdown: String? = null,
 )

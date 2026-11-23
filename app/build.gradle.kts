@@ -16,7 +16,9 @@ android {
         versionCode = 1
         versionName = "1.0"
 
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunner = "com.semiovert.app.BusinessTestRunner"
+        buildConfigField("boolean", "OFFLINE_PREVIEW", "false")
+        buildConfigField("String", "TURNSTILE_SITE_KEY", "\"0x4AAAAAADITPkjO79RYxVbM\"")
     }
 
     buildTypes {
@@ -30,6 +32,7 @@ android {
             signingConfig = signingConfigs.getByName("debug")
             isDebuggable = false
             matchingFallbacks += "release"
+            buildConfigField("boolean", "OFFLINE_PREVIEW", "true")
         }
     }
     compileOptions {
@@ -38,6 +41,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -49,10 +53,17 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.webkit)
+    implementation(libs.lottie)
+    implementation(libs.commonmark.core)
+    implementation(libs.commonmark.tables)
+    implementation(libs.commonmark.strike)
+    implementation(libs.jsoup)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.navigation.compose)
+    compileOnly(libs.jsr305)
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)

@@ -30,8 +30,8 @@ class ProfileSceneMotionTest {
         app.waitForIdle()
         app.onNodeWithTag("profile-scene").assertExists()
         val signedIn=app.activity.getSharedPreferences("offline_preview",Context.MODE_PRIVATE).getBoolean("demo_signed_in",false)
-        val contentTag=if(signedIn)"profile-identity" else "profile-guest"
-        val restingLeft=app.onNodeWithTag(contentTag).fetchSemanticsNode().boundsInRoot.left
+        val contentTag=if(signedIn)"profile-info" else "login-screen"
+        val resting=app.onNodeWithTag(contentTag,useUnmergedTree=true).getUnclippedBoundsInRoot()
 
         menu()
         app.mainClock.autoAdvance=false
@@ -53,12 +53,15 @@ class ProfileSceneMotionTest {
             app.onNodeWithContentDescription("切换到我的").performClick()
             app.mainClock.advanceTimeBy(SceneMotion.DRAWER_MS+64L)
             val handoff=PageHandoff(Destination.HOME,Destination.PROFILE,profileGuest=!signedIn)
-            app.mainClock.advanceTimeBy(handoff.enterDelayMillis+minOf(360,handoff.enterMillis/2).toLong())
+            val halfway=handoff.enterMillis/2L
+            app.mainClock.advanceTimeBy(handoff.enterDelayMillis+halfway)
             app.onNodeWithTag("profile-scene").assertExists()
-            val enteringLeft=app.onNodeWithTag(contentTag).fetchSemanticsNode().boundsInRoot.left
-            assertTrue("Restored profile starts off to the right, instead of skipping its entrance",enteringLeft>restingLeft+1f)
-            app.mainClock.advanceTimeBy(SceneMotion.PROFILE_ENTER_MS+64L)
-            app.onNodeWithTag(contentTag).assertIsDisplayed()
+            val entering=app.onNodeWithTag(contentTag,useUnmergedTree=true).getUnclippedBoundsInRoot()
+            if(signedIn)assertTrue("Restored profile text enters from the right",entering.left.value>resting.left.value+1f)
+            else assertTrue("Restored login form enters from below",entering.top.value>resting.top.value+1f)
+            app.mainClock.advanceTimeBy(halfway+32L)
+            assertTrue("Profile content settles on its shortened entrance clock",
+                app.onNodeWithTag(contentTag,useUnmergedTree=true).getUnclippedBoundsInRoot()==resting)
         } finally {app.mainClock.autoAdvance=true;app.waitForIdle()}
     }
 }

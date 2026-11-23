@@ -4,7 +4,7 @@ import kotlin.math.floor
 import kotlin.math.log2
 import kotlin.math.pow
 
-/** Port of the web profile's pixelResolution and its image/outline fades. */
+/** Port of the web profile's pixelResolution and image fade. */
 internal object AvatarPixelMotion {
     const val DURATION_MILLIS=750
     const val OPENING_SIZE=116
@@ -18,7 +18,6 @@ internal object AvatarPixelMotion {
 
     // Web image fade starts at 390ms; its pixel stage starts at 400ms.
     fun imageAlpha(progress: Float)=((progress*DURATION_MILLIS+10f)/50f).coerceIn(0f,1f)
-    fun outlineAlpha(progress: Float)=1f-((progress*DURATION_MILLIS-500f)/250f).coerceIn(0f,1f)
 
     // Change identities only while both pictures are coarse; then resolve the destination.
     fun sourceClarity(progress: Float)=1f-(progress/.4f).coerceIn(0f,1f)

@@ -1,14 +1,24 @@
 package com.semiovert.app
 
+import android.content.res.Configuration
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.semiovert.app.core.data.SampleLibrary
+import com.semiovert.app.core.designsystem.SceneMotion
 import com.semiovert.app.core.model.ReadingDuration
 import com.semiovert.app.core.designsystem.wave.WaveDeckMath
+import kotlin.math.roundToInt
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -20,7 +30,7 @@ class CategoryWaveDeckTest {
     @get:Rule(order=1) val app=createAndroidComposeRule<MainActivity>()
 
     private fun enter() {
-        app.onNodeWithContentDescription("打开页面导航").performClick()
+        app.onNodeWithTag("main-circle").performSemanticsAction(SemanticsActions.OnLongClick){it()}
         app.onNodeWithContentDescription("切换到分类").performClick()
         app.waitForIdle()
         app.onNodeWithTag("category-wave").assertIsDisplayed()
@@ -38,6 +48,70 @@ class CategoryWaveDeckTest {
         app.waitForIdle()
     }
     private fun bounds(id: String)=app.onNodeWithTag("wave-card-"+id,useUnmergedTree=true).fetchSemanticsNode().boundsInRoot
+    private fun labelLayout(label: SemanticsNodeInteraction): TextLayoutResult {
+        val results=mutableListOf<TextLayoutResult>()
+        label.performSemanticsAction(SemanticsActions.GetTextLayoutResult) {assertTrue(it(results))}
+        return results.single()
+    }
+
+    @Test fun categoryLabelIsCenteredAboveTheLargeCounter() {
+        enter()
+        fun assertCenter(duration: ReadingDuration) {
+            val labelNode=app.onNodeWithTag("category-label").assertTextEquals(duration.label)
+            val style=labelLayout(labelNode).layoutInput.style
+            assertEquals(18.sp,style.fontSize)
+            assertEquals(FontWeight.Bold,style.fontWeight)
+            val label=labelNode.fetchSemanticsNode().boundsInRoot
+            val counter=app.onNodeWithTag("deck-counter").fetchSemanticsNode().boundsInRoot
+            val firstCardTop=SampleLibrary.inDuration(duration).minOf {bounds(it.id).top}
+            val numberBand=counter.copy(bottom=minOf(counter.bottom,firstCardTop))
+            val nightMode=app.activity.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
+            val ink=if(nightMode==Configuration.UI_MODE_NIGHT_YES)Color.White else Color.Black
+            val pixels=app.onRoot().captureToImage().toPixelMap()
+            fun inkCenter(band: Rect): Float {
+                var left=pixels.width
+                var right=-1
+                for(row in band.top.roundToInt() until band.bottom.roundToInt()) {
+                    for(column in 0 until pixels.width) {
+                        if(pixels[column,row]==ink) {
+                            left=minOf(left,column)
+                            right=maxOf(right,column)
+                        }
+                    }
+                }
+                assertTrue("Expected rendered text in $band",right>left)
+                return (left+right)/2f
+            }
+            assertTrue(label.bottom<=counter.top)
+            assertEquals(inkCenter(numberBand),inkCenter(label),app.density.density*1.5f)
+        }
+        assertCenter(ReadingDuration.QUICK)
+        app.onNodeWithTag("main-circle").performClick()
+        app.waitForIdle()
+        assertCenter(ReadingDuration.MEDIUM)
+        app.onNodeWithTag("main-circle").performClick()
+        app.waitForIdle()
+        assertCenter(ReadingDuration.LONG)
+    }
+
+    @Test fun categoryLabelScramblesAcrossTheDurationSwap() {
+        enter()
+        val label=app.onNodeWithTag("category-label")
+        val previous=ReadingDuration.QUICK.label
+        val target=ReadingDuration.MEDIUM.label
+        assertEquals(previous,labelLayout(label).layoutInput.text.text)
+        app.mainClock.autoAdvance=false
+        try {
+            app.onNodeWithTag("main-circle").performClick()
+            app.mainClock.advanceTimeBy(SceneMotion.CATEGORY_SWAP_MS+128L)
+            label.assertTextEquals(target)
+            val middle=labelLayout(label).layoutInput.text.text
+            assertNotEquals(previous,middle)
+            assertNotEquals(target,middle)
+            app.mainClock.advanceTimeBy(SceneMotion.CATEGORY_SWAP_ENTER_MS.toLong())
+            assertEquals(target,labelLayout(label).layoutInput.text.text)
+        } finally {app.mainClock.autoAdvance=true}
+    }
 
     @Test fun frontIsCompleteAndCardsBehindItAreHigherWithoutAnOldGlScene() {
         enter();rest(0)

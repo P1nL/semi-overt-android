@@ -3,6 +3,8 @@ package com.semiovert.app
 import androidx.compose.ui.graphics.luminance
 import com.semiovert.app.core.designsystem.MainCircleColorState
 import com.semiovert.app.core.designsystem.MainCircleIconState
+import com.semiovert.app.core.designsystem.SoGreen
+import androidx.compose.ui.graphics.Color
 import com.semiovert.app.navigation.Destination
 import com.semiovert.app.navigation.circleColors
 import kotlinx.coroutines.CoroutineScope
@@ -11,6 +13,10 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class NavigationCircleColorTest {
+    @Test fun homeCircleUsesTheProjectGreen() {
+        assertEquals(Color(0xFF158624), SoGreen)
+        assertEquals(SoGreen, Destination.HOME.circleColors.background)
+    }
     @Test fun glyphAndColorShareTheReturnProgressBeforeTheNewPageExists() {
         val scope=CoroutineScope(Dispatchers.Unconfined)
         val colors=MainCircleColorState(scope)

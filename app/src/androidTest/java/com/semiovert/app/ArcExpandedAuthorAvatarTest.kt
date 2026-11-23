@@ -32,7 +32,7 @@ class ArcExpandedAuthorAvatarTest {
         app.setContent {
             MaterialTheme {
                 BoxWithConstraints(Modifier.fillMaxSize().clipToBounds()) {
-                    ArcAuthorAvatar(author,"article-"+author.id,position,dragging,settling,true,
+                    ArcAuthorAvatar(author,"article-"+author.id,{position},dragging,settling,true,
                         ArcDeckMath.geometry(maxWidth.value,maxHeight.value))
                 }
             }
@@ -99,7 +99,7 @@ class ArcExpandedAuthorAvatarTest {
             .assertIsDisplayed().assertContentDescriptionEquals("街角观察员的头像").fetchSemanticsNode().boundsInRoot
         val card=app.onNodeWithTag("article-street").fetchSemanticsNode().boundsInRoot
         assertEquals("Right-aligned without shifting the card",card.right,avatar.right,2f)
-        assertTrue("Prefer the upper blank area",avatar.bottom<card.top)
+        assertTrue("Prefer the lower blank area away from the theme button",avatar.top>card.bottom)
         app.onNodeWithContentDescription("林间来信的头像").assertDoesNotExist()
 
         app.onNodeWithTag("home-arc").performTouchInput {

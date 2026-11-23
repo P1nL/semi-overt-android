@@ -6,6 +6,32 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ArcDeckMotionTest {
+    @Test fun flingVelocityPreservesDirectionAndUsesCardUnitsAcrossDensities() {
+        assertEquals(6f,ArcDeckMotion.flingVelocity(-600f,100f),.0001f)
+        assertEquals(-6f,ArcDeckMotion.flingVelocity(600f,100f),.0001f)
+        assertEquals(ArcDeckMotion.flingVelocity(-600f,100f),ArcDeckMotion.flingVelocity(-1800f,300f),0f)
+        assertEquals(ArcDeckMotion.MAX_FLING_SPEED,ArcDeckMotion.flingVelocity(-100000f,100f),0f)
+        assertEquals(-ArcDeckMotion.MAX_FLING_SPEED,ArcDeckMotion.flingVelocity(100000f,100f),0f)
+    }
+
+    @Test fun slowReleaseSnapsDirectlyWhileQuickReleaseCoasts() {
+        assertFalse(ArcDeckMotion.shouldFling(0f))
+        assertFalse(ArcDeckMotion.shouldFling(1f))
+        assertFalse(ArcDeckMotion.shouldFling(-1f))
+        assertTrue(ArcDeckMotion.shouldFling(ArcDeckMotion.MIN_FLING_SPEED))
+        assertTrue(ArcDeckMotion.shouldFling(-ArcDeckMotion.MIN_FLING_SPEED))
+    }
+
+    @Test fun fasterFlingTravelsFurtherWithoutSpinningThroughTheWholeQueue() {
+        val decay=ArcDeckMotion.flingSpec()
+        val medium=decay.calculateTargetValue(0f,6f)
+        val fast=decay.calculateTargetValue(0f,ArcDeckMotion.MAX_FLING_SPEED)
+        assertTrue("A medium flick continues beyond one card",medium>1f)
+        assertTrue("A fast flick coasts across several cards",fast>medium&&fast in 2f..3.5f)
+        assertEquals(-fast,decay.calculateTargetValue(0f,-ArcDeckMotion.MAX_FLING_SPEED),.0001f)
+        assertEquals(5f+fast,decay.calculateTargetValue(5f,ArcDeckMotion.MAX_FLING_SPEED),.0001f)
+    }
+
     @Test fun releaseVelocityFollowsTheGestureButDoesNotAmplifyFastFlicks() {
         assertEquals(.8f,ArcDeckMotion.releaseVelocity(-80f,100f),.0001f)
         assertEquals(-.8f,ArcDeckMotion.releaseVelocity(80f,100f),.0001f)
@@ -31,6 +57,24 @@ class ArcDeckMotionTest {
         val early=animation.getValueFromNanos(80_000_000L)
         val later=animation.getValueFromNanos(320_000_000L)
         assertTrue(early>0f&&later>early&&later<40f)
+    }
+
+    @Test fun selectionLiftAndReturnKeepTheirSpringPathAndFinishIn900Ms() {
+        val lift=TargetBasedAnimation(ArcDeckMotion.liftSpec(),Float.VectorConverter,0f,1f)
+        val returning=TargetBasedAnimation(ArcDeckMotion.liftSpec(),Float.VectorConverter,1f,0f)
+        val spring=TargetBasedAnimation(ArcDeckMotion.followSpec(),Float.VectorConverter,0f,1f)
+        assertEquals(900_000_000L,lift.durationNanos)
+        assertEquals(900_000_000L,returning.durationNanos)
+        for(frame in 0..30) {
+            val fraction=frame/30f
+            assertEquals("Only the clock changes; the weighted path stays the same",
+                spring.getValueFromNanos((fraction*spring.durationNanos).toLong()),
+                lift.getValueFromNanos((fraction*lift.durationNanos).toLong()),.001f)
+            val time=(fraction*lift.durationNanos).toLong()
+            assertEquals(1f-lift.getValueFromNanos(time),returning.getValueFromNanos(time),.001f)
+        }
+        assertEquals(1f,lift.getValueFromNanos(lift.durationNanos),0f)
+        assertEquals(0f,returning.getValueFromNanos(returning.durationNanos),0f)
     }
 
     @Test fun releasingNearTheTargetRetainsBoundedMomentumAndStillSettles() {

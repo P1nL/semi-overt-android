@@ -11,8 +11,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.geometry.*
 import androidx.compose.ui.graphics.*
-import androidx.compose.ui.graphics.painter.BitmapPainter
-import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.*
@@ -26,14 +24,23 @@ import com.semiovert.app.R
 import com.semiovert.app.core.model.*
 import kotlin.math.abs
 
-/** Home supplies its background-decoded images during cold-start preparation. */
-internal val LocalPreparedArticleCovers=staticCompositionLocalOf<Map<Int,ImageBitmap>> {emptyMap()}
-
-@Composable
-internal fun articleCoverPainter(resource: Int): Painter {
-    val prepared=LocalPreparedArticleCovers.current[resource]
-    return if(prepared!=null)remember(prepared) {BitmapPainter(prepared)} else painterResource(resource)
+private val HomeArticleCoverColors=with(SoPalette) {
+    listOf(ForestGreen,AutumnLeaf,FrenchBlue,Tomato,Teal,BrightAmber,Amethyst,CarrotOrange,MintLeaf,TomatoJam,FrenchBlue)
 }
+
+private class ArticleCardCoordinates {
+    var bounds: LayoutCoordinates?=null
+    var handle: LayoutCoordinates?=null
+    var title: LayoutCoordinates?=null
+    var author: LayoutCoordinates?=null
+    var date: LayoutCoordinates?=null
+    var duration: LayoutCoordinates?=null
+}
+
+internal fun homeArticleCoverColor(index: Int)=HomeArticleCoverColors[index%HomeArticleCoverColors.size]
+
+internal fun articleCardBorder(selected: Boolean)=BorderStroke(
+    if(selected)1.dp else .5.dp,Color.White.copy(alpha=if(selected).28f else .12f))
 
 fun articleCoverResource(article: Article,category: Boolean): Int {
     val cover=article.cover?:if(article.tone==CardTone.MINT)Cover.FOREST else Cover.ARCHITECTURE
@@ -45,24 +52,36 @@ fun articleCoverResource(article: Article,category: Boolean): Int {
     }
 }
 
+@Composable
+internal fun ArticleCoverArtwork(article: Article,category: Boolean,modifier: Modifier,coverColor: Color?) {
+    val photo = rememberRemoteImage(article.coverUrl, 900).bitmap
+    if (photo != null) Box(modifier) {
+        Image(photo, null, contentScale = ContentScale.Crop, modifier = Modifier.matchParentSize())
+        Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = .42f)))
+    }
+    else if(coverColor!=null)Box(modifier.background(coverColor))
+    else Image(painterResource(articleCoverResource(article,category)),null,contentScale=ContentScale.Crop,modifier=modifier)
+}
+
 /** The category skin owns its handle and reading behavior, wherever it is used. */
 @Composable
 fun CoverArticleCard(article: Article,selected: Boolean,modifier: Modifier,coverTag: String,topAligned: Boolean=false,squareBottom: Boolean=false,shortBottomBlur: Boolean=false,onClick: (()->Unit)?=null,interactable: Boolean=true,exitRank: Int?=null,
     readingOrigin: ArticleOrigin?=if(topAligned&&squareBottom)ArticleOrigin.STACK else null,
-    allowLift: Boolean=selected,onRead: (()->Unit)?=onClick,shadowElevation: Dp=2.dp,stackLayer: Float?=null) {
+    allowLift: Boolean=selected,onRead: (()->Unit)?=onClick,shadowElevation: Dp=2.dp,stackLayer: Float?=null,
+    ownsReadingSource: Boolean=true,coverColor: Color?=null,openWithLift: Boolean=false) {
     val shared=readingOrigin!=null
     val handle=topAligned&&squareBottom
     val expansion=LocalArticleExpansion.current
     val colors=MaterialTheme.colorScheme
     val cover=article.cover?:if(article.tone==CardTone.MINT)Cover.FOREST else Cover.ARCHITECTURE
     val lightCopy=topAligned&&cover==Cover.FOREST
-    val ink=if(lightCopy)if(colors.surface.luminance()<colors.onSurface.luminance())colors.surface else colors.onSurface else Color.White
-    var bounds by remember(article.id){mutableStateOf<LayoutCoordinates?>(null)}
-    var handleBounds by remember(article.id){mutableStateOf<LayoutCoordinates?>(null)}
-    var title by remember(article.id){mutableStateOf<LayoutCoordinates?>(null)}
-    var author by remember(article.id){mutableStateOf<LayoutCoordinates?>(null)}
-    var date by remember(article.id){mutableStateOf<LayoutCoordinates?>(null)}
-    var duration by remember(article.id){mutableStateOf<LayoutCoordinates?>(null)}
+    val ink=when {
+        article.coverUrl!=null->Color.White
+        coverColor!=null->SoPalette.inkOn(coverColor)
+        lightCopy->if(colors.surface.luminance()<colors.onSurface.luminance())colors.surface else colors.onSurface
+        else->Color.White
+    }
+    val coordinates=remember(article.id) {ArticleCardCoordinates()}
     var restingTop by remember(article.id){mutableFloatStateOf(0f)}
     fun measured(coordinates: LayoutCoordinates?)=coordinates?.takeIf {it.isAttached}?.articleBoundsInRoot()?:Rect.Zero
     val density=LocalDensity.current.density
@@ -70,51 +89,58 @@ fun CoverArticleCard(article: Article,selected: Boolean,modifier: Modifier,cover
     val currentClick by rememberUpdatedState(onClick)
     val currentRead by rememberUpdatedState(onRead)
     val enabled by rememberUpdatedState(interactable&&allowLift)
-    val source by rememberUpdatedState({ArticleSource(article,measured(bounds),measured(title),measured(author),measured(date),measured(duration),ink,readingOrigin?:ArticleOrigin.STACK,stackLayer)})
-    val openReading: ()->Unit={currentRead?.let {read->if(shared&&expansion!=null)expansion.open(source(),read) else read()}}
+    val source by rememberUpdatedState({ArticleSource(article,measured(coordinates.bounds),measured(coordinates.title),measured(coordinates.author),measured(coordinates.date),measured(coordinates.duration),
+        ink,readingOrigin?:ArticleOrigin.STACK,stackLayer,coverColor)})
+    fun sourceReady() {
+        if(ownsReadingSource&&expansion?.needsSourceMeasurement(article.id)==true)expansion.sourceReady(source())
+    }
+    val openReading: ()->Unit={currentRead?.let {read->if(shared&&expansion!=null)expansion.open(source(),openWithLift,read) else read()}}
     val open: ()->Unit={if(shared&&selected)openReading() else currentClick?.invoke()}
     val click=if(onClick!=null)Modifier.clickable(enabled=interactable&&expansion?.active!=true,onClickLabel=if(selected)"阅读文章" else "选择文章",onClick=open) else Modifier
     val readingTarget=if(shared&&exitRank!=null&&expansion?.active==true&&expansion.source?.article?.id!=article.id)
         SceneMotion.readingOffset(expansion.progress,exitRank,restingTop,screenHeight) else 0f
     val readingFollow by animateFloatAsState(readingTarget,SceneMotion.readingFollowerSpring(exitRank?:0),label="reading-list-"+article.id)
-    val coverPainter=articleCoverPainter(articleCoverResource(article,shortBottomBlur))
-    Surface(modifier=modifier.then(click).onGloballyPositioned {
-        bounds=it;restingTop=it.articleBoundsInRoot().top-readingFollow;expansion?.sourceReady(source())
+    Surface(modifier=modifier.onGloballyPositioned {
+        coordinates.bounds=it
+        if(shared&&exitRank!=null)restingTop=it.articleBoundsInRoot().top-readingFollow
+        sourceReady()
     }.graphicsLayer {
         alpha=if(shared&&expansion?.source?.article?.id==article.id)0f else 1f
         translationY=readingFollow
-    },color=colors.surfaceVariant,contentColor=ink,
+    }.then(click),color=coverColor?:colors.surfaceVariant,contentColor=ink,
         shape=RoundedCornerShape(18.dp,18.dp,if(squareBottom)0.dp else 18.dp,if(squareBottom)0.dp else 18.dp),
-        border=BorderStroke(if(selected)1.dp else .5.dp,Color.White.copy(alpha=if(selected).28f else .12f)),shadowElevation=shadowElevation) {
+        border=articleCardBorder(selected),shadowElevation=shadowElevation) {
         Box(Modifier.fillMaxSize()) {
-            Image(coverPainter,null,contentScale=ContentScale.Crop,modifier=Modifier.fillMaxSize().testTag(coverTag))
+            val artwork=Modifier.fillMaxSize().testTag(coverTag)
+            if(coverColor==null||article.coverUrl!=null)ArticleCoverArtwork(article,shortBottomBlur,artwork,coverColor)
+            else Box(artwork)
             Column(Modifier.align(if(topAligned)Alignment.TopStart else Alignment.BottomStart).fillMaxWidth().padding(start=18.dp,end=18.dp,top=if(handle)ArticleCardMetrics.STACK_TITLE_TOP_DP.dp else 18.dp,bottom=18.dp)) {
                 Text(article.title,style=MaterialTheme.typography.titleLarge.copy(fontFamily=FontFamily.SansSerif,fontSize=ArticleCardMetrics.TITLE_FONT_SP.sp,lineHeight=ArticleCardMetrics.TITLE_LINE_SP.sp,fontWeight=FontWeight.SemiBold,
-                    shadow=if(lightCopy)Shadow.None else Shadow(Color.Black.copy(alpha=.22f),Offset(0f,1f),4f)),maxLines=3,overflow=TextOverflow.Ellipsis,
-                    modifier=Modifier.onGloballyPositioned {title=it;expansion?.sourceReady(source())}.testTag("card-title-"+article.id))
+                    shadow=if(coverColor!=null||lightCopy)Shadow.None else Shadow(Color.Black.copy(alpha=.22f),Offset(0f,1f),4f)),maxLines=3,overflow=TextOverflow.Ellipsis,
+                    modifier=Modifier.onGloballyPositioned {coordinates.title=it;sourceReady()}.testTag("card-title-"+article.id))
                 Row(Modifier.padding(top=5.dp)) {
-                    Text(article.author.name,style=MaterialTheme.typography.bodySmall.copy(fontSize=13.sp,lineHeight=18.sp),maxLines=1,modifier=Modifier.onGloballyPositioned {author=it;expansion?.sourceReady(source())})
+                    Text(article.author.name,style=MaterialTheme.typography.bodySmall.copy(fontSize=13.sp,lineHeight=18.sp),maxLines=1,modifier=Modifier.onGloballyPositioned {coordinates.author=it;sourceReady()})
                     Text(" · ",style=MaterialTheme.typography.bodySmall.copy(fontSize=13.sp,lineHeight=18.sp))
-                    Text("约 "+article.minutes+" 分钟",style=MaterialTheme.typography.bodySmall.copy(fontSize=13.sp,lineHeight=18.sp),maxLines=1,modifier=Modifier.onGloballyPositioned {duration=it;expansion?.sourceReady(source())})
+                    Text(("约 "+article.minutes+" 分钟").withInterfaceDigits(),style=MaterialTheme.typography.bodySmall.copy(fontSize=13.sp,lineHeight=18.sp),maxLines=1,modifier=Modifier.onGloballyPositioned {coordinates.duration=it;sourceReady()})
                 }
-                Text(article.date,style=MaterialTheme.typography.bodySmall.copy(fontSize=13.sp,lineHeight=18.sp),maxLines=1,modifier=Modifier.onGloballyPositioned {date=it;expansion?.sourceReady(source())})
+                Text(article.date.withInterfaceDigits(),style=MaterialTheme.typography.bodySmall.copy(fontSize=13.sp,lineHeight=18.sp),maxLines=1,modifier=Modifier.onGloballyPositioned {coordinates.date=it;sourceReady()})
             }
             if(handle) {
                 val gesture=if(expansion==null)Modifier else Modifier.pointerInput(article.id,expansion) {
                     awaitEachGesture {
                         val down=awaitFirstDown(requireUnconsumed=false)
                         if(!enabled||expansion.active)return@awaitEachGesture
-                        val coordinates=handleBounds?.takeIf {it.isAttached}?:return@awaitEachGesture
+                        val handleCoordinates=coordinates.handle?.takeIf {it.isAttached}?:return@awaitEachGesture
                         // The card moves faster than the finger on a downward queue drag.
                         // Its moving local coordinates must never turn that drag into a lift.
-                        val start=coordinates.localToRoot(down.position)
+                        val start=handleCoordinates.localToRoot(down.position)
                         val velocity=VelocityTracker();velocity.addPosition(down.uptimeMillis,start)
                         var acquired=false;var released=false
                         try {
                             while(true) {
                                 val change=awaitPointerEvent().changes.firstOrNull {it.id==down.id}?:break
-                                if(!coordinates.isAttached)break
-                                val point=coordinates.localToRoot(change.position)
+                                if(!handleCoordinates.isAttached)break
+                                val point=handleCoordinates.localToRoot(change.position)
                                 velocity.addPosition(change.uptimeMillis,point)
                                 if(!change.pressed) {
                                     if(acquired){released=true;expansion.release(-velocity.calculateVelocity().y/density)}
@@ -129,10 +155,10 @@ fun CoverArticleCard(article: Article,selected: Boolean,modifier: Modifier,cover
                                 }
                                 if(acquired){change.consume();expansion.drag(up/(SceneMotion.LIFT_DISTANCE_DP*density))}
                             }
-                        } finally {if(acquired&&!released)expansion.cancel()}
+                        } finally {if(acquired&&!released)expansion.cancelDrag()}
                     }
                 }
-                Box(Modifier.align(Alignment.TopCenter).size(96.dp,48.dp).onGloballyPositioned {handleBounds=it}.then(gesture)
+                Box(Modifier.align(Alignment.TopCenter).size(96.dp,48.dp).onGloballyPositioned {coordinates.handle=it}.then(gesture)
                     .then(if(allowLift)Modifier.testTag("article-handle-"+article.id).semantics {contentDescription="上提展开阅读"}
                         .clickable(interactionSource=null,indication=null,enabled=interactable&&expansion?.active!=true,onClickLabel="阅读文章",onClick=openReading) else Modifier.clearAndSetSemantics {})) {
                     Box(Modifier.align(Alignment.TopCenter).padding(top=12.dp).size(32.dp,3.dp).background(ink.copy(alpha=.55f),RoundedCornerShape(2.dp)))

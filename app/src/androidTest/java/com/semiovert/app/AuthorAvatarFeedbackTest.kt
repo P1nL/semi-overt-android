@@ -18,14 +18,14 @@ import org.junit.Rule
 import org.junit.Test
 import kotlin.math.*
 
-/** Fixed in-memory guest state: no preference reset, login, or mutation of the user's settings. */
+/** In-memory account state for avatar and navigation checks. */
 class AuthorAvatarFeedbackTest {
     @get:Rule val app=createComposeRule()
-    private fun start() {
+    private fun start(signedIn: Boolean=false) {
         val model=PreviewViewModel(InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as Application)
         app.setContent {SoTheme(ThemeMode.LIGHT) {
-            CompositionLocalProvider(LocalIdentity provides remember {IdentityAnchor(false,0)},LocalMotionEnabled provides true) {
-                AppNavigation(PreviewState(signedIn=false),model) {}
+            CompositionLocalProvider(LocalIdentity provides remember {IdentityAnchor(signedIn,0)},LocalMotionEnabled provides true) {
+                AppNavigation(PreviewState(signedIn=signedIn),model) {}
             }
         }}
         app.waitForIdle()
@@ -59,6 +59,24 @@ class AuthorAvatarFeedbackTest {
         }
         assertTrue("The selected author remains visible above the route layers",largest>100)
         return bounds
+    }
+
+    @Test fun searchAvatarOpensLoginForGuests() {
+        start();navigate("搜索");app.waitForIdle()
+        app.onNodeWithContentDescription("打开个人页").performClick()
+        app.waitForIdle()
+        app.onNodeWithTag("profile-guest").assertIsDisplayed()
+        app.onNodeWithTag("login-screen").assertIsDisplayed()
+        app.onNodeWithText("去哪里看看").assertDoesNotExist()
+    }
+
+    @Test fun searchAvatarOpensTheProfileForSignedInReaders() {
+        start(signedIn=true);navigate("搜索");app.waitForIdle()
+        app.onNodeWithContentDescription("打开个人页").performClick()
+        app.waitForIdle()
+        app.onNodeWithTag("profile-identity").assertIsDisplayed()
+        app.onNodeWithTag("login-screen").assertDoesNotExist()
+        app.onNodeWithText("去哪里看看").assertDoesNotExist()
     }
 
     @Test fun selectedSearchAndReaderAvatarsMoveToTheirAuthorAndMorphIntoTheGuestIdentity() {
@@ -108,14 +126,14 @@ class AuthorAvatarFeedbackTest {
         app.onNodeWithContentDescription("打开个人页").performClick()
         app.onNodeWithContentDescription("设置").performClick()
         app.onNodeWithText("进入登录页").assertDoesNotExist()
-        app.onNodeWithText("页面状态预览").performScrollTo()
+        app.onNodeWithText("调整导航位置").performScrollTo()
         app.mainClock.autoAdvance=false
         try {
-            app.onNodeWithText("页面状态预览").performTouchInput {click()}
+            app.onNodeWithText("调整导航位置").performTouchInput {click()}
             app.mainClock.advanceTimeBy(120)
             app.onNodeWithTag("spark-feedback").assertExists()
             app.mainClock.advanceTimeBy(600)
-            app.onNodeWithText("空内容").performTouchInput {click()}
+            app.onNodeWithContentDescription("保存位置").performTouchInput {click()}
             app.mainClock.advanceTimeBy(100)
             app.onNodeWithTag("spark-feedback").assertExists()
             app.mainClock.advanceTimeBy(500)

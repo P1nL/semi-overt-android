@@ -155,25 +155,36 @@ class ReadingOverlayTest {
                 val scale=LocalDensity.current
                 val inset=WindowInsets.statusBars.getTop(scale)/scale.density
                 SideEffect {density=scale.density;statusTop=inset}
-                DeckCounterHost(page.value,11) {
-                    Box(Modifier.fillMaxSize().background(Color.White)) {
-                        DeckCounter(1,11,page.value,Modifier.width(240.dp))
+                Box(Modifier.fillMaxSize().background(Color.White)) {
+                    DeckCounterHost(page.value,3) {
+                        DeckCounter(1,3,page.value,Modifier.width(240.dp))
                     }
                 }
             }
         }
-        fun firstInk(): Int {
+        fun assertGlyphTops(anchor: Float) {
             val image=app.onRoot().captureToImage().toPixelMap()
-            return (0 until image.height).first {y->
-                (0 until (240*density).toInt()).any {x->image[x,y].red<.5f}
+            val width=(240*density).toInt()
+            val tops=mutableListOf<Int>()
+            var glyphTop=image.height
+            for(column in 0..width) {
+                val inkTop=if(column==width)null else (0 until image.height).firstOrNull {row->image[column,row].red<.5f}
+                if(inkTop!=null)glyphTop=minOf(glyphTop,inkTop)
+                else if(glyphTop<image.height) {
+                    tops.add(glyphTop)
+                    glyphTop=image.height
+                }
             }
+            assertEquals("Expected separate ink for 1, / and 3",3,tops.size)
+            val (numerator,divider,denominator)=tops
+            assertEquals("Digits start at the shared counter anchor",anchor,minOf(numerator,denominator).toFloat(),2f*density)
+            assertEquals("The slash starts at the visible digit top",minOf(numerator,denominator).toFloat(),divider.toFloat(),2f*density)
         }
         app.waitForIdle()
-        assertEquals("Search glyphs must start at the results container's top",0f,firstInk().toFloat(),2f*density)
+        assertGlyphTops(0f)
         app.runOnIdle {page.value="category"}
         app.waitForIdle()
-        assertEquals("Category must use the same screen anchor as the search scope bottom",
-            (statusTop+DeckCounterLayout.ROOT_TOP)*density,firstInk().toFloat(),2f*density)
+        assertGlyphTops((statusTop+DeckCounterLayout.ROOT_TOP)*density)
     }
 
     @Test fun rearLiftKeepsForegroundVisibleAndFadesPositionedNumbers() {
@@ -181,13 +192,13 @@ class ReadingOverlayTest {
         var density=1f
         app.setContent {
             MaterialTheme(colorScheme=lightColorScheme(background=Color.White,onSurfaceVariant=Color.Black)) {
-                DeckCounterHost("search",3) {
+                Box(Modifier.fillMaxSize().background(Color.White)) {
                     WaveDeckOverlayHost {
                         ArticleExpansionHost {
                             val state=LocalArticleExpansion.current!!
                             val scale=LocalDensity.current.density
                             SideEffect {expansion=state;density=scale}
-                            Box(Modifier.fillMaxSize().background(Color.White)) {
+                            DeckCounterHost("search",3) {
                                 DeckCounter(1,3,"search",Modifier.width(240.dp))
                                 // A front card must still cover the rear reading copy, even though
                                 // that copy is owned by the full-screen reading host.

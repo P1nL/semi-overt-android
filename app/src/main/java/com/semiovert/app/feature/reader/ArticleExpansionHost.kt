@@ -24,9 +24,13 @@ import com.semiovert.app.core.designsystem.wave.readingStackOverlay
 import kotlin.math.roundToInt
 
 @Composable
-fun ArticleExpansionHost(content: @Composable ()->Unit) {
+internal fun rememberArticleExpansionState(): ArticleExpansionState {
     val scope=rememberCoroutineScope()
-    val expansion=remember {ArticleExpansionState(scope)}
+    return remember(scope) {ArticleExpansionState(scope)}
+}
+
+@Composable
+fun ArticleExpansionHost(expansion: ArticleExpansionState=rememberArticleExpansionState(),content: @Composable ()->Unit) {
     val motion=LocalMotionEnabled.current
     val focus=LocalFocusManager.current
     val keyboard=LocalSoftwareKeyboardController.current
@@ -46,60 +50,56 @@ private fun ExpansionOverlay(source: ArticleSource,state: ArticleExpansionState,
     val anchors=state.anchors
     val density=LocalDensity.current
     val p=state.progress
-    val geometry=if(anchors.title==Rect.Zero)0f else SceneMotion.readingText(p)
-    val titlePosition=if(source.origin==ArticleOrigin.STACK&&anchors.title!=Rect.Zero)SceneMotion.readingTitlePosition(p) else geometry
+    val contentProgress=state.contentProgress
+    val body=SceneMotion.readingBody(contentProgress,state.returning,source.origin)
+    // Both directions share the copy path and fixed-size cover, with independent clocks.
+    val textPosition=if(anchors.title==Rect.Zero)0f else SceneMotion.readingOpeningText(contentProgress,source.origin,state.returning)
+    val geometry=SoEase.transform(textPosition)
     val color=lerp(source.ink,MaterialTheme.colorScheme.onSurface,geometry)
     val metaColor=lerp(source.ink,MaterialTheme.colorScheme.onSurfaceVariant,geometry)
-    BoxWithConstraints(Modifier.fillMaxSize().zIndex(20f)
+    Box(Modifier.fillMaxSize().zIndex(20f)
         .readingStackOverlay(source.stackLayer) {true}.testTag("reading-expansion").semantics {
         stateDescription=if(state.settling)"阅读转场收束中" else "上提展开中"
         progressBarRangeInfo=ProgressBarRangeInfo(p.coerceIn(0f,1f),0f..1f)
     }.pointerInput(Unit){awaitPointerEventScope {while(true)awaitPointerEvent().changes.forEach {it.consume()}}}) {
-        val widthPx=with(density){maxWidth.toPx()};val heightPx=with(density){maxHeight.toPx()}
         val b=source.card
-        val lift=(p/SceneMotion.READING_DRAG_STAGE).coerceIn(-.08f,SceneMotion.READING_CONTAINER_START/SceneMotion.READING_DRAG_STAGE)
-        val liftedScale=1f+.035f*lift
-        val lifted=Rect(Offset(b.left-b.width*(liftedScale-1f)/2f,
-            b.top-SceneMotion.LIFT_DISTANCE_DP*density.density*lift),Size(b.width*liftedScale,b.height*liftedScale))
-        val container=SceneMotion.readingContainer(p)
-        val reader=Rect(root,Size(widthPx,heightPx))
-        val card=lerp(lifted,reader,container)
-        // Only the opening home background starts early; text anchors and return keep their old path.
-        val background=if(source.origin==ArticleOrigin.HOME&&!state.returning)SceneMotion.homeReadingContainer(p) else container
-        val backgroundCard=lerp(lifted,reader,background)
-        val sourceScale=card.width/b.width
-        // Keep the original text layout: the source anchors travel with the whole card first.
-        fun carried(anchor: Rect)=Rect(Offset(card.left+(anchor.left-b.left)*sourceScale,
-            card.top+(anchor.top-b.top)*sourceScale),anchor.size)
-        Surface(Modifier.offset {IntOffset((backgroundCard.left-root.x).roundToInt(),(backgroundCard.top-root.y).roundToInt())}
+        val lift=SceneMotion.readingOpeningLift(p,source.origin)
+        val card=Rect(Offset(b.left,b.top-SceneMotion.LIFT_DISTANCE_DP*density.density*lift),b.size)
+        val cardAlpha=SceneMotion.readingOpeningCardAlpha(contentProgress,source.origin,state.returning)
+        fun carried(anchor: Rect)=Rect(Offset(card.left+anchor.left-b.left,
+            card.top+anchor.top-b.top),anchor.size)
+        Surface(Modifier.offset {IntOffset((card.left-root.x).roundToInt(),(card.top-root.y).roundToInt())}
             .wrapContentSize(Alignment.TopStart,unbounded=true)
-            .requiredSize(with(density){backgroundCard.width.toDp()},with(density){backgroundCard.height.toDp()}),
-            shape=RoundedCornerShape(topStart=(18f*(1f-background)).dp,topEnd=(18f*(1f-background)).dp,
-                bottomStart=(if(source.origin==ArticleOrigin.HOME)18f*(1f-background) else 0f).dp,
-                bottomEnd=(if(source.origin==ArticleOrigin.HOME)18f*(1f-background) else 0f).dp),
-            shadowElevation=((if(source.origin==ArticleOrigin.HOME)10f else 2f)*(1f-background)).dp,
-            color=MaterialTheme.colorScheme.background.copy(alpha=if(source.origin==ArticleOrigin.HOME)SceneMotion.homeReadingFade(p) else SceneMotion.readingBody(p))) {
-            Image(articleCoverPainter(articleCoverResource(source.article,source.origin==ArticleOrigin.STACK)),null,contentScale=ContentScale.Crop,
-                modifier=Modifier.fillMaxSize().graphicsLayer {alpha=1f-SceneMotion.segment(p,.70f,.90f)})
+            .requiredSize(with(density){card.width.toDp()},with(density){card.height.toDp()})
+            .graphicsLayer {alpha=cardAlpha}
+            .testTag("reading-card-background"),
+            shape=RoundedCornerShape(topStart=18.dp,topEnd=18.dp,
+                bottomStart=(if(source.origin==ArticleOrigin.HOME)18f else 0f).dp,
+                bottomEnd=(if(source.origin==ArticleOrigin.HOME)18f else 0f).dp),
+            border=if(source.origin==ArticleOrigin.HOME)articleCardBorder(selected=true) else null,
+            shadowElevation=(if(source.origin==ArticleOrigin.HOME)10f else 2f).dp,
+            color=MaterialTheme.colorScheme.background) {
+            ArticleCoverArtwork(source.article,source.origin==ArticleOrigin.STACK,Modifier.fillMaxSize(),source.coverColor)
         }
         ReaderArticleLayout(source.article,rememberLazyListState(),{},anchors,
-            bodyProgress=SceneMotion.readingBody(p),avatarProgress=SceneMotion.readingAvatar(p),headingProgress=geometry,tag="reader-preview")
+            bodyProgress=body,avatarProgress=SceneMotion.readingOpeningAvatar(contentProgress,source.origin,state.returning),
+            headingProgress=geometry,tag="reader-preview")
         val cardTitle=MaterialTheme.typography.titleLarge.copy(fontFamily=FontFamily.SansSerif,fontSize=23.sp,lineHeight=29.sp,fontWeight=FontWeight.SemiBold)
         val cardMeta=MaterialTheme.typography.bodySmall.copy(fontSize=13.sp,lineHeight=18.sp)
         StableReadingText(source.article.title,carried(source.title),anchors.title,cardTitle,MaterialTheme.typography.headlineLarge,
-            color,geometry,root,sourceLines=3,targetLines=Int.MAX_VALUE,sourceScale=sourceScale,positionProgress=titlePosition)
+            color,geometry,root,sourceLines=3,targetLines=Int.MAX_VALUE,positionProgress=textPosition,tag="reading-copy-title")
         StableReadingText(source.article.author.name,carried(source.author),anchors.author,cardMeta,MaterialTheme.typography.labelLarge,
-            color,geometry,root,sourceScale=sourceScale)
+            color,geometry,root,positionProgress=textPosition)
         val separator=Rect(source.author.right,source.author.top,source.duration.left,source.author.bottom)
         if(separator.width>0f)StableReadingText(" · ",carried(separator),Rect.Zero,cardMeta,cardMeta,
-            color,geometry,root,targetText="",sourceScale=sourceScale)
+            color,geometry,root,targetText="",positionProgress=textPosition)
         StableReadingText(source.article.date,carried(source.date),anchors.date,cardMeta,MaterialTheme.typography.labelMedium,
-            metaColor,geometry,root,targetText=source.article.date+" · ",sourceScale=sourceScale)
+            metaColor,geometry,root,targetText=source.article.date+" · ",positionProgress=textPosition,interfaceDigits=true)
         StableReadingText("约 "+source.article.minutes+" 分钟",carried(source.duration),anchors.duration,cardMeta,MaterialTheme.typography.labelMedium,
-            metaColor,geometry,root,sourceScale=sourceScale)
-        if(source.origin==ArticleOrigin.STACK)Box(Modifier.offset {IntOffset((card.center.x-root.x-16.dp.toPx()*sourceScale).roundToInt(),
-            (card.top+12.dp.toPx()*sourceScale-root.y).roundToInt())}
-            .size((32f*sourceScale).dp,(3f*sourceScale).dp).graphicsLayer {alpha=1f-SceneMotion.segment(p,.62f,.78f)}
+            metaColor,geometry,root,positionProgress=textPosition,interfaceDigits=true)
+        if(source.origin==ArticleOrigin.STACK)Box(Modifier.offset {IntOffset((card.center.x-root.x-16.dp.toPx()).roundToInt(),
+            (card.top+12.dp.toPx()-root.y).roundToInt())}
+            .size(32.dp,3.dp).graphicsLayer {alpha=cardAlpha}
             .background(source.ink.copy(alpha=.55f),RoundedCornerShape(2.dp)))
     }
 }
@@ -107,21 +107,23 @@ private fun ExpansionOverlay(source: ArticleSource,state: ArticleExpansionState,
 /** Measure each endpoint once. Only layers scale/move; width and font never reflow in flight. */
 @Composable
 private fun StableReadingText(text: String,from: Rect,to: Rect,fromStyle: TextStyle,toStyle: TextStyle,
-    color: Color,progress: Float,root: Offset,sourceLines: Int=1,targetLines: Int=1,targetText: String=text,sourceScale: Float=1f,
-    positionProgress: Float=progress) {
+    color: Color,progress: Float,root: Offset,sourceLines: Int=1,targetLines: Int=1,targetText: String=text,
+    positionProgress: Float=progress,tag: String?=null,interfaceDigits: Boolean=false) {
     val density=LocalDensity.current
     val target=if(to==Rect.Zero)from else to
     val ratio=toStyle.fontSize.value/fromStyle.fontSize.value
-    val zoom=sourceScale+(ratio-sourceScale)*progress
+    val zoom=1f+(ratio-1f)*progress
     val blend=SceneMotion.segment(progress,.2f,.8f)
-    fun placement(width: Float,scale: Float,opacity: Float)=Modifier
+    fun placement(width: Float,scale: Float,opacity: Float,layer: String)=Modifier
         .offset {IntOffset((from.left+(target.left-from.left)*positionProgress-root.x).roundToInt(),
             (from.top+(target.top-from.top)*positionProgress-root.y).roundToInt())}
         .requiredWidth(with(density){width.toDp()})
         .graphicsLayer {transformOrigin=TransformOrigin(0f,0f);scaleX=scale;scaleY=scale;alpha=opacity}
-        .clearAndSetSemantics {}
-    Text(text,modifier=placement(from.width,zoom,1f-blend),style=fromStyle,color=color,
+        .clearAndSetSemantics {if(tag!=null)testTag="$tag-$layer"}
+    Text(if(interfaceDigits)text.withInterfaceDigits() else AnnotatedString(text),
+        modifier=placement(from.width,zoom,1f-blend,"source"),style=fromStyle,color=color,
         maxLines=sourceLines,softWrap=sourceLines>1,overflow=TextOverflow.Ellipsis)
-    Text(targetText,modifier=placement(target.width,zoom/ratio,blend),style=toStyle,color=color,
+    Text(if(interfaceDigits)targetText.withInterfaceDigits() else AnnotatedString(targetText),
+        modifier=placement(target.width,zoom/ratio,blend,"target"),style=toStyle,color=color,
         maxLines=targetLines,softWrap=targetLines>1,overflow=TextOverflow.Ellipsis)
 }

@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
+import com.semiovert.app.core.data.LocalBusiness
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
@@ -42,7 +43,7 @@ private val LocalAvatarMorph=compositionLocalOf {1f}
 private fun avatarPixelKey(authorId: String?): String {
     val identity=LocalIdentity.current
     val colors=MaterialTheme.colorScheme
-    val person=authorId?:"user-${identity.signedIn}-${identity.avatar}"
+    val person=authorId?:"user-${identity.signedIn}-${identity.avatar}-${identity.photoKey}"
     return "$person-${colors.secondary}-${colors.onSecondary}-${colors.background}"
 }
 
@@ -155,5 +156,8 @@ internal fun Modifier.avatarIdentityPixels(authorId: String?): Modifier {
 fun AuthorAvatar(authorId: String,modifier: Modifier=Modifier,size: Int=48,shared: Boolean=true) {
     val transition=if(shared)Modifier.authorAvatarSharedElement(authorId) else Modifier
     val pixels=if(shared)Modifier.avatarIdentityPixels(authorId) else Modifier
-    Box(modifier.then(transition).size(size.dp).then(pixels).testTag("author-avatar-$authorId")) {ProfileAvatar(size=size)}
+    val photo = rememberRemoteImage(LocalBusiness.current?.knownAuthor(authorId)?.avatarUrl, 320)
+    Box(modifier.then(transition).size(size.dp).then(pixels).testTag("author-avatar-$authorId")) {
+        ProfileAvatar(size=size, photo=photo.bitmap)
+    }
 }
