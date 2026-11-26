@@ -4,7 +4,9 @@ const paths = {
   back: '<path d="m12 5-7 7 7 7M5 12h15"/>',
   up: '<path d="m6 15 6-6 6 6" stroke-width="3"/>',
   more: '<circle cx="5" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="19" cy="12" r="1.5" fill="currentColor"/>',
-  send: '<path d="m3 10 18-7-7 18-3-8-8-3Zm8 3L21 3" stroke-width="2.2"/>',
+  send: '<path d="m3 10 18-7-7 18-3-8-8-3Zm8 3L21 3" transform="translate(-1.75 1.75)" stroke-width="2.2"/>',
+  person: '<circle cx="12" cy="7" r="3.5"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/>',
+  home: '<path d="m3 11 9-7 9 7M5 10v10h14V10m-9 10v-6h4v6"/>',
   content: '<path d="M10 20H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2v9M8 7h9M8 11h6M8 15h3"/><circle cx="15" cy="20" r=".8" fill="currentColor"/><circle cx="20" cy="20" r=".8" fill="currentColor"/>',
   cursor: '<path d="M8 3c2.5 0 4 .9 4 3 0-2.1 1.5-3 4-3M12 6v12M8 21c2.5 0 4-.9 4-3 0 2.1 1.5 3 4 3M9 12h6" stroke-width="2.8"/>',
   paragraph: '<path d="M14 21V3H9a5 5 0 0 0 0 10h5M19 3v18M11 3h10"/>',
@@ -42,6 +44,7 @@ const $ = (selector) => document.querySelector(selector);
 const phone = $('#phone'), island = $('#island'), titleInput = $('#topic-title');
 const dialog = $('#action-dialog'), cursorButton = $('#cursor-button');
 const drawerPages = $('#drawer-pages'), summaryInput = $('#topic-summary');
+const MIN_BODY_WORDS = 50;
 const draftKey = new URLSearchParams(location.search).get('draftKey') || 'semiovert-editor-draft-v1';
 const toolsKey = 'semiovert-editor-prototype-tools-v1';
 const tools = [
@@ -70,8 +73,10 @@ let coverLoad = 0;
 let cursorRepeat = null, suppressCursorClick = null;
 let selectLabelFrame = 0;
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+const reducePreviewMotion = () => reducedMotion.matches || phone.dataset.motion === 'off';
 const popoverAnimations = new WeakMap();
 const toolbarInputModes = new WeakMap();
+let previewAuthor = { name: '我', avatar: null, variant: 0 };
 
 function icon(name) { return `<svg viewBox="0 0 24 24" aria-hidden="true">${paths[name] || paths.content}</svg>`; }
 function hydrateIcons(root = document) { root.querySelectorAll('[data-icon]').forEach((node) => { node.innerHTML = icon(node.dataset.icon); }); }
@@ -79,7 +84,11 @@ function escapeHtml(value) { return String(value).replace(/[&<>"']/g, (char) => 
 function toolIcon(tool) { return tool.letter ? `<span class="letter-icon${tool.id === 'italic' ? ' italic' : ''}">${tool.letter}</span>` : icon(tool.icon); }
 function notify(message) {
   $('#toast').textContent = message; $('#toast').classList.add('visible');
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => $('#toast').classList.remove('visible'), 2400);
+  clearTimeout(toastTimer); toastTimer = setTimeout(dismissTip, 2400);
+}
+function dismissTip() {
+  clearTimeout(toastTimer);
+  $('#toast').classList.remove('visible');
 }
 function renderTools() {
   for (const group of ['common', 'format', 'alignment', 'insert']) {
@@ -233,11 +242,22 @@ function setExpanded(expanded) {
   }
   updateTools();
 }
+function bodyWordCount() {
+  return Array.from(editor.getText({ blockSeparator: '' }).replace(/\s/g, '')).length;
+}
+function validateArticle() {
+  if (!titleInput.value.trim()) { notify('请输入标题'); return false; }
+  if (bodyWordCount() < MIN_BODY_WORDS) {
+    notify(`正文至少需要 ${MIN_BODY_WORDS} 个字`);
+    return false;
+  }
+  return true;
+}
 function updateCounts() {
   $('#title-count').textContent = `${Array.from(titleInput.value).length} 字`;
-  const count = Array.from(editor.getText({ blockSeparator: '' }).replace(/\s/g, '')).length;
-  $('#body-count-value').textContent = `${count} / 20`;
-  $('#body-count').classList.toggle('valid', count >= 20);
+  const count = bodyWordCount();
+  $('#body-count-value').textContent = `${count} / ${MIN_BODY_WORDS}`;
+  $('#body-count').classList.toggle('valid', count >= MIN_BODY_WORDS);
   titleInput.style.height = '43px';
   titleInput.style.height = `${Math.min(110, Math.max(43, titleInput.scrollHeight))}px`;
 }
@@ -248,7 +268,7 @@ function saveDraft() {
       window.SemiNativeEditor.persistCloud();
     } else {
       localStorage.setItem(draftKey, JSON.stringify({ title: titleInput.value, body, summary: summaryInput.value, coverUrl: state.coverUrl, updatedAt: new Date().toISOString() }));
-      $('#save-label').textContent = '草稿自动保存';
+      $('#save-label').textContent = '自动保存';
     }
     state.saved = true;
   } catch { $('#save-label').textContent = '本机存储已满'; notify('本机存储已满，请导出草稿'); }
@@ -311,10 +331,25 @@ function closeMenu() {
   $('#menu-dismiss').hidden = true;
   $('#more-button').setAttribute('aria-expanded', 'false');
 }
-function showPreview() {
-  closeMenu(); closeEditingPopovers(); setExpanded(false); saveDraft(); blurTextInput();
-  state.preview = true; phone.classList.add('previewing'); $('#preview').hidden = false;
-  $('#preview-label').hidden = false;
+function renderPreviewAuthor() {
+  $('#preview-author-name').textContent = previewAuthor.name;
+  const image = $('#preview-avatar-image');
+  const symbol = $('#preview-avatar-symbol');
+  symbol.innerHTML = icon(['person', 'book', 'home'][previewAuthor.variant % 3] || 'person');
+  if (image.getAttribute('src') === previewAuthor.avatar) return;
+  image.hidden = true;
+  if (previewAuthor.avatar) image.src = previewAuthor.avatar;
+  else image.removeAttribute('src');
+}
+function renderPreviewDate(timestamp) {
+  const stored = new Date(timestamp || NaN);
+  const date = Number.isNaN(stored.getTime()) ? new Date() : stored;
+  const dateLabel = $('#preview-date');
+  dateLabel.dateTime = dateLabel.textContent = [
+    date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0'),
+  ].join('-');
+}
+function renderPreview() {
   $('#preview-title').textContent = titleInput.value || '未命名文章';
   $('#preview-summary').textContent = summaryInput.value;
   $('#preview-summary').hidden = !summaryInput.value.trim();
@@ -322,14 +357,47 @@ function showPreview() {
   if (state.coverUrl) $('#preview-cover').src = state.coverUrl;
   else $('#preview-cover').removeAttribute('src');
   $('#preview-body').innerHTML = SemiEditor.renderMarkdownToEditorHtml(body);
-  $('#back-button').setAttribute('aria-label', '返回编辑');
-  window.SemiNativeEditor?.updateCloudButtons();
+  renderPreviewAuthor();
+  renderPreviewDate();
+  const minutes = Math.max(1, Math.round(bodyWordCount() / 300));
+  $('#preview-duration').textContent = `约 ${minutes} 分钟`;
 }
-function closePreview() {
-  state.preview = false; phone.classList.remove('previewing');
-  $('#preview').hidden = $('#preview-label').hidden = true;
-  $('#back-button').setAttribute('aria-label', '返回');
-  window.SemiNativeEditor?.updateCloudButtons();
+function setPreviewMode(active, animate) {
+  state.preview = active;
+  if (!animate) phone.classList.add('preview-instant');
+  phone.classList.toggle('previewing', active);
+  $('#preview').inert = !active;
+  $('#writing-area').inert = island.inert = active;
+  for (const selector of ['#body-count', '#title-count']) $(selector).setAttribute('aria-hidden', String(active));
+  window.SemiNativeEditor?.previewChanged();
+  if (!animate) {
+    phone.getBoundingClientRect();
+    phone.classList.remove('preview-instant');
+  }
+}
+function showPreview(animate = true) {
+  closeMenu(); closeEditingPopovers(); window.EditorContextTools?.close(); saveDraft(); blurTextInput();
+  window.SemiNative?.hideKeyboard();
+  const preview = $('#preview');
+  renderPreview();
+  preview.hidden = false;
+  preview.scrollTop = 0;
+  if (animate) preview.getBoundingClientRect();
+  $('#back-button').setAttribute('aria-label', '返回编辑');
+  setPreviewMode(true, animate);
+}
+function closePreview(animate = true) {
+  if (!state.preview) return;
+  sling.reset();
+  dismissTip();
+  $('#back-button').setAttribute('aria-label', window.SemiNativeEditor?.cloud ? '返回草稿箱' : '返回');
+  setPreviewMode(false, animate);
+}
+function resetDraft() {
+  clearTimeout(saveTimer); titleInput.value = body = summaryInput.value = ''; state.coverUrl = ''; state.saved = true;
+  coverLoad++; $('#cover-upload').disabled = false; updateSummaryCount(); renderCover();
+  localStorage.removeItem(draftKey); closePreview(false); mountEditor(); setExpanded(false);
+  updateCounts(); updateTools();
 }
 function openDialog(title, content, submitLabel, onSubmit) {
   blurTextInput();
@@ -417,7 +485,7 @@ const actions = {
     $('#more-button').setAttribute('aria-expanded', String(opening));
   },
   expand() { setExpanded(!state.expanded); },
-  preview: showPreview,
+  export() { closeMenu(); downloadDraft(); },
   back() {
     if (state.preview) return closePreview();
     if (state.expanded) return setExpanded(false);
@@ -445,25 +513,18 @@ const actions = {
     scrambleSelectionLabel(state.selecting ? '退出选择' : '选择文字');
   },
   discard() {
-    openDialog('舍弃草稿？', '<p class="dialog-copy">内容将清空，无法撤销。</p>', '舍弃', () => {
-      clearTimeout(saveTimer); titleInput.value = body = summaryInput.value = ''; state.coverUrl = ''; state.saved = true;
-      coverLoad++; $('#cover-upload').disabled = false; updateSummaryCount(); renderCover();
-      localStorage.removeItem(draftKey); mountEditor(); closePreview(); setExpanded(false);
-      updateCounts(); updateTools(); notify('草稿已舍弃'); return true;
+    const cloud = window.SemiNativeEditor?.cloud;
+    const detail = window.SemiNativeEditor?.hasCloudDraft() ? '本机及云端草稿都会删除。' : '草稿内容将清空。';
+    openDialog('舍弃草稿？', `<p class="dialog-copy">${detail}</p>`, '舍弃', () => {
+      if (cloud) return window.SemiNativeEditor.discard();
+      resetDraft(); notify('草稿已舍弃'); return true;
     });
     $('#dialog-actions .primary').classList.add('destructive');
   },
   send() {
     if (window.SemiNativeEditor?.handleSend()) return;
-    if (state.preview) {
-      openDialog('导出内容', '<p class="dialog-copy">当前内容尚未发布，可导出 Markdown。</p>', '导出 Markdown', () => { downloadDraft(); return true; });
-      return;
-    }
-    if (!titleInput.value.trim()) { notify('请输入标题'); return; }
-    if (Array.from(editor.getText({ blockSeparator: '' }).replace(/\s/g, '')).length < 20) {
-      notify('正文至少需要 20 个字'); return;
-    }
-    showPreview(); notify('内容已就绪，尚未发布');
+    if (state.preview) return notify('离线模式无法发布');
+    if (validateArticle()) { showPreview(); notify('进入预览'); }
   },
   'close-dialog'() { dialog.close(); },
   'pick-cover'() { $('#cover-picker').click(); },
@@ -705,7 +766,9 @@ function fitPhone() {
 }
 window.addEventListener('resize', fitPhone);
 hydrateIcons(); restoreDraft(); mountEditor(); renderTools(); updateCounts(); fitPhone();
-ArchiveButtonPress.bind($('.send-button'));
+const sling = PublishSling.bind($('#publish-control'), reducePreviewMotion, () => window.SemiNativeEditor?.reportMotion());
+$('#preview-avatar-image').addEventListener('load', event => { event.target.hidden = false; });
+$('#preview-avatar-image').addEventListener('error', event => { event.target.hidden = true; });
 const initialState = new URLSearchParams(location.search).get('state');
 if (initialState === 'tools') setExpanded(true);
 if (initialState === 'menu') actions.menu();

@@ -27,11 +27,7 @@ internal data class EditorDraft(
         "RETURNED" -> "退回修改"
         "REJECTED" -> "未通过"
         "APPROVED" -> "已发布"
-        else -> when {
-            localChanges -> "待同步"
-            remoteId != null -> "云端草稿"
-            else -> null
-        }
+        else -> "待同步".takeIf { localChanges }
     }
     val modifiedLabel: String
         get() = runCatching {

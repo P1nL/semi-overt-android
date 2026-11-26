@@ -6,6 +6,17 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class LiquidCircleGeometryTest {
+    @Test fun outwardPullLengthensTheMainFacingEdgeAndNarrowsTheCrossAxis() {
+        val radius=26f
+        assertEquals(radius,LiquidCircleGeometry.facingRadius(radius,0f),0f)
+        assertEquals(radius,LiquidCircleGeometry.sideRadius(radius,0f),0f)
+        assertTrue(LiquidCircleGeometry.facingRadius(radius,.8f)>LiquidCircleGeometry.facingRadius(radius,.4f))
+        assertTrue(LiquidCircleGeometry.sideRadius(radius,.8f)<LiquidCircleGeometry.sideRadius(radius,.4f))
+        assertTrue(LiquidCircleGeometry.sideRadius(radius,.8f) in (radius*.8f)..radius)
+        assertTrue(LiquidCircleGeometry.facingRadius(radius,-.1f)<radius)
+        assertTrue(LiquidCircleGeometry.sideRadius(radius,-.1f)>radius)
+    }
+
     @Test fun grabbedDropletNeckUsesTheDistanceLimitAndWorksAtAnyAngle() {
         val direction=Offset(.6f,.8f)
         for(distance in listOf(100f,170f,215f)) {

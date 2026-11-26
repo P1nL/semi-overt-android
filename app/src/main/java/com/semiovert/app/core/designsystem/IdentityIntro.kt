@@ -22,7 +22,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 
 @Stable
-class IdentityAnchor(val signedIn: Boolean,val avatar: Int,val photo: ImageBitmap?=null,val photoKey: String?=null) {
+class IdentityAnchor(val signedIn: Boolean,val avatar: Int,val photo: ImageBitmap?=null,val photoKey: String?=null,
+    val photoLoaded: Boolean=true) {
     var bounds by mutableStateOf(Rect.Zero)
     var image by mutableStateOf<ImageBitmap?>(null)
     var playing by mutableStateOf(false)
@@ -61,15 +62,15 @@ fun IdentityAvatar(modifier: Modifier=Modifier,size: Int=40,guestArtworkFraction
         if(!anchor.playing)drawLayer(layer)
         if(!recorded)recorded=true
     }.avatarIdentityPixels(null)) {
-        ProfileAvatar(anchor.avatar,size,photo=anchor.photo)
+        ResolvingProfileAvatar(anchor.avatar,size,anchor.photo,anchor.photoKey,anchor.photoLoaded)
     }
 }
 
 @Composable
 fun IdentityIntroHost(signedIn: Boolean,avatar: Int,
-    photo: ImageBitmap?=null,photoKey: String?=null,
+    photo: ImageBitmap?=null,photoKey: String?=null,photoLoaded: Boolean=true,
     content: @Composable ()->Unit) {
-    val anchor=remember(signedIn,avatar,photo,photoKey) {IdentityAnchor(signedIn,avatar,photo,photoKey)}
+    val anchor=remember(signedIn,avatar,photo,photoKey,photoLoaded) {IdentityAnchor(signedIn,avatar,photo,photoKey,photoLoaded)}
     var played by rememberSaveable {mutableStateOf(false)}
     val motion=LocalMotionEnabled.current
     val background=MaterialTheme.colorScheme.background

@@ -33,13 +33,15 @@ internal object ArcAuthorAvatarMotion {
     const val STABLE_MILLIS=120L
     const val STABLE_POSITION_WINDOW=.025f
     const val SETTLED_SLOT_DISTANCE=.08f
+    const val BROWSE_GAP=6f
     const val EXPANDED_ENTER_MILLIS=280
     const val EXPANDED_REVEAL_PROGRESS=.95f
     const val EXPANDED_GAP=14f
 
     fun placement(g: ArcDeckGeometry): ArcAuthorAvatarPlacement {
-        val left=g.focusX+g.cardWidth/2f
-        val diameter=(g.width-left-12f).coerceIn(24f,76f)
+        val cardRight=g.focusX+g.cardWidth/2f
+        val diameter=(g.width-cardRight-12f).coerceIn(24f,76f)
+        val left=cardRight+BROWSE_GAP
         return ArcAuthorAvatarPlacement(left,g.focusY-diameter/2f,diameter,g.width-left+1f)
     }
 

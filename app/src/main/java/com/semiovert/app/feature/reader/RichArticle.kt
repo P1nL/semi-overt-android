@@ -19,6 +19,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.text.HtmlCompat
 import com.semiovert.app.core.designsystem.rememberRemoteImage
+import com.semiovert.app.core.designsystem.StatusText
+import com.semiovert.app.core.designsystem.accentInk
 import org.commonmark.ext.gfm.strikethrough.StrikethroughExtension
 import org.commonmark.ext.gfm.tables.TablesExtension
 import org.commonmark.parser.Parser
@@ -109,7 +111,7 @@ internal fun RichContent(block: RichBlock) {
                 it.text = text
                 it.textSize = textStyle.fontSize.value
                 it.setTextColor(colors.onSurface.toArgb())
-                it.setLinkTextColor(colors.primary.toArgb())
+                it.setLinkTextColor(colors.accentInk.toArgb())
                 it.setLineSpacing(0f, 1.16f)
             })
         }
@@ -118,8 +120,8 @@ internal fun RichContent(block: RichBlock) {
             val image = photo.bitmap
             if (image != null) Image(image, block.alt.ifBlank { "正文图片" }, Modifier.fillMaxWidth()
                 .aspectRatio((image.width.toFloat() / image.height).coerceIn(.4f, 4f)), contentScale = ContentScale.Fit)
-            else Text(if (photo.loaded) block.alt.ifBlank { "图片暂不可用" } else "正在加载图片…",
-                color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            else StatusText(if (photo.loaded) block.alt.ifBlank { "图片不可用" } else "图片加载中",
+                style = MaterialTheme.typography.bodySmall)
         }
         is RichBlock.Code -> Box(Modifier.fillMaxWidth().background(colors.surfaceVariant)) {
             Text(block.value, Modifier.horizontalScroll(rememberScrollState()).padding(12.dp),

@@ -43,7 +43,7 @@ private val LocalAvatarMorph=compositionLocalOf {1f}
 private fun avatarPixelKey(authorId: String?): String {
     val identity=LocalIdentity.current
     val colors=MaterialTheme.colorScheme
-    val person=authorId?:"user-${identity.signedIn}-${identity.avatar}-${identity.photoKey}"
+    val person=authorId?:"user-${identity.signedIn}-${identity.avatar}-${identity.photoKey}-${identity.photo!=null}"
     return "$person-${colors.secondary}-${colors.onSecondary}-${colors.background}"
 }
 
@@ -123,11 +123,14 @@ internal fun Modifier.avatarIdentityPixels(authorId: String?): Modifier {
     val enabled=LocalMotionEnabled.current
     val active=handoff?.changesIdentity==true&&enabled&&
         (if(authorId==null)userAvatarInAuthorHandoff() else authorAvatarInHandoff(authorId))
+    val identity=LocalIdentity.current
+    val canCapture=authorId!=null||identity.photoLoaded
+    val userPhoto=if(authorId==null)identity.photo else null
     val layer=rememberGraphicsLayer()
     var recorded by remember(key) {mutableStateOf(false)}
-    LaunchedEffect(recorded,key) {
-        if(recorded&&cache[key]==null) {
-            val image=layer.toImageBitmap()
+    LaunchedEffect(recorded,key,canCapture) {
+        if(recorded&&canCapture&&cache[key]==null) {
+            val image=userPhoto ?: layer.toImageBitmap()
             cache[key]=withContext(Dispatchers.Default) {AvatarPixelFrames(image)}
         }
     }

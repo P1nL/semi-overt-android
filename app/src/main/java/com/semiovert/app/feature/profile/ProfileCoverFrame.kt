@@ -1,5 +1,10 @@
 package com.semiovert.app.feature.profile
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -26,8 +31,10 @@ import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.semiovert.app.core.designsystem.ProfileCoverImage
+import com.semiovert.app.core.designsystem.SoEase
 import com.semiovert.app.core.designsystem.SoIcon
 import com.semiovert.app.core.designsystem.SoSymbol
+import com.semiovert.app.core.designsystem.motionMillis
 
 @Composable
 internal fun profileCoverHeight()=WindowInsets.statusBars.asPaddingValues().calculateTopPadding()+224.dp
@@ -60,8 +67,7 @@ internal fun ProfileCoverFrame(
                         CustomAccessibilityAction("下移封面"){onMove(-.1f)},
                     )
                 },contentAlignment=Alignment.Center) {
-                if(image!=null)ProfileCoverImage(image,Modifier.fillMaxSize().testTag("edit-cover-preview"),position)
-                else if(!hasCover)Text("上传封面",style=MaterialTheme.typography.labelLarge,color=colors.onSurfaceVariant)
+                FadingProfileCover(image,position,Modifier.matchParentSize(),"edit-cover-preview",showUpload=!hasCover)
             }
             if(hasCover)IconButton(onClick=onRemove,enabled=enabled,modifier=Modifier.align(Alignment.TopEnd)
                 .testTag("edit-cover-remove")) {
@@ -69,6 +75,22 @@ internal fun ProfileCoverFrame(
                     SoIcon(SoSymbol.CLOSE,"移除封面",Modifier.size(16.dp),tint=colors.surface)
                 }
             }
+        }
+    }
+}
+
+private data class CoverContent(val image: ImageBitmap?,val position: Float,val showUpload: Boolean)
+
+@Composable
+internal fun FadingProfileCover(image: ImageBitmap?,position: Float,modifier: Modifier,tag: String,showUpload: Boolean=false) {
+    val duration=motionMillis(220)
+    AnimatedContent(CoverContent(image,position,showUpload),modifier=modifier,
+        contentKey={it.image to it.showUpload},transitionSpec={
+            ContentTransform(fadeIn(tween(duration,easing=SoEase)),fadeOut(tween(duration,easing=SoEase)),sizeTransform=null)
+        },label="profile-cover-fade") { content ->
+        Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center) {
+            if(content.image!=null)ProfileCoverImage(content.image,Modifier.fillMaxSize().testTag(tag),content.position)
+            else if(content.showUpload)Text("上传封面",style=MaterialTheme.typography.labelLarge,color=MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

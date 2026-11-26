@@ -25,7 +25,7 @@ import com.semiovert.app.core.model.*
 import kotlin.math.abs
 
 private val HomeArticleCoverColors=with(SoPalette) {
-    listOf(ForestGreen,AutumnLeaf,FrenchBlue,Tomato,Teal,BrightAmber,Amethyst,CarrotOrange,MintLeaf,TomatoJam,FrenchBlue)
+    listOf(Teal,AutumnLeaf,FrenchBlue,Tomato,Olive,BrightAmber,Amethyst,CarrotOrange,MintLeaf,TomatoJam,Plum)
 }
 
 private class ArticleCardCoordinates {
@@ -38,6 +38,9 @@ private class ArticleCardCoordinates {
 }
 
 internal fun homeArticleCoverColor(index: Int)=HomeArticleCoverColors[index%HomeArticleCoverColors.size]
+
+internal fun categoryArticleCoverColor(article: Article,index: Int)=
+    if(article.cover==null)homeArticleCoverColor(index) else null
 
 internal fun articleCardBorder(selected: Boolean)=BorderStroke(
     if(selected)1.dp else .5.dp,Color.White.copy(alpha=if(selected).28f else .12f))
@@ -53,8 +56,8 @@ fun articleCoverResource(article: Article,category: Boolean): Int {
 }
 
 @Composable
-internal fun ArticleCoverArtwork(article: Article,category: Boolean,modifier: Modifier,coverColor: Color?) {
-    val photo = rememberRemoteImage(article.coverUrl, 900).bitmap
+internal fun ArticleCoverArtwork(article: Article,category: Boolean,modifier: Modifier,coverColor: Color?,
+    photo: ImageBitmap?=rememberRemoteImage(article.coverUrl,900).bitmap) {
     if (photo != null) Box(modifier) {
         Image(photo, null, contentScale = ContentScale.Crop, modifier = Modifier.matchParentSize())
         Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = .42f)))
@@ -75,8 +78,9 @@ fun CoverArticleCard(article: Article,selected: Boolean,modifier: Modifier,cover
     val colors=MaterialTheme.colorScheme
     val cover=article.cover?:if(article.tone==CardTone.MINT)Cover.FOREST else Cover.ARCHITECTURE
     val lightCopy=topAligned&&cover==Cover.FOREST
+    val photo=rememberRemoteImage(article.coverUrl,900).bitmap
     val ink=when {
-        article.coverUrl!=null->Color.White
+        photo!=null||(article.coverUrl!=null&&(coverColor==null||readingOrigin==ArticleOrigin.HOME))->Color.White
         coverColor!=null->SoPalette.inkOn(coverColor)
         lightCopy->if(colors.surface.luminance()<colors.onSurface.luminance())colors.surface else colors.onSurface
         else->Color.White
@@ -112,7 +116,7 @@ fun CoverArticleCard(article: Article,selected: Boolean,modifier: Modifier,cover
         border=articleCardBorder(selected),shadowElevation=shadowElevation) {
         Box(Modifier.fillMaxSize()) {
             val artwork=Modifier.fillMaxSize().testTag(coverTag)
-            if(coverColor==null||article.coverUrl!=null)ArticleCoverArtwork(article,shortBottomBlur,artwork,coverColor)
+            if(coverColor==null||article.coverUrl!=null)ArticleCoverArtwork(article,shortBottomBlur,artwork,coverColor,photo)
             else Box(artwork)
             Column(Modifier.align(if(topAligned)Alignment.TopStart else Alignment.BottomStart).fillMaxWidth().padding(start=18.dp,end=18.dp,top=if(handle)ArticleCardMetrics.STACK_TITLE_TOP_DP.dp else 18.dp,bottom=18.dp)) {
                 Text(article.title,style=MaterialTheme.typography.titleLarge.copy(fontFamily=FontFamily.SansSerif,fontSize=ArticleCardMetrics.TITLE_FONT_SP.sp,lineHeight=ArticleCardMetrics.TITLE_LINE_SP.sp,fontWeight=FontWeight.SemiBold,

@@ -23,9 +23,9 @@ import androidx.compose.ui.platform.LocalDensity
 @Composable
 fun ArticleFeed(
     articles: List<Article>, listState: LazyListState, listTag: String,
-    onArticle: (String) -> Unit, topPadding: Int = 16, emptyMessage: String = "暂时没有文章",
-    emptyHint: String = "试试其他阅读时长。", modifier: Modifier = Modifier, categoryCards: Boolean=false,
-    openWithLift: Boolean=false,displayEmptyCopy: Boolean=false,
+    onArticle: (String) -> Unit, topPadding: Int = 16, emptyMessage: String = "暂无文章",
+    modifier: Modifier = Modifier, categoryCards: Boolean=false,
+    openWithLift: Boolean=false,displayEmptyCopy: Boolean=false,usePaletteCover: Boolean=false,
 ) {
     val expansion=LocalArticleExpansion.current
     var unavailable by remember {mutableStateOf(false)}
@@ -34,15 +34,8 @@ fun ArticleFeed(
         return
     }
     if (articles.isEmpty()) {
-        Column(modifier.fillMaxSize().padding(32.dp), verticalArrangement=Arrangement.Center, horizontalAlignment=Alignment.CenterHorizontally) {
-            SoIcon(SoSymbol.BOOK, modifier=Modifier.size(36.dp), tint=MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.height(20.dp))
-            val title=MaterialTheme.typography.titleMedium
-            val hint=MaterialTheme.typography.bodyMedium
-            Text(emptyMessage,style=if(displayEmptyCopy)title.withInterfaceTypeface() else title)
-            Text(emptyHint,Modifier.padding(top=8.dp),style=if(displayEmptyCopy)hint.withInterfaceTypeface() else hint,
-                color=MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+        val title=MaterialTheme.typography.titleMedium
+        EmptyContent(emptyMessage,SoSymbol.BOOK,modifier,style=if(displayEmptyCopy)title.withInterfaceTypeface() else title)
     } else {
         LazyColumn(state=listState,userScrollEnabled=expansion?.active!=true,modifier=modifier.fillMaxSize().testTag(listTag),
             contentPadding=PaddingValues(start=20.dp,end=20.dp,top=topPadding.dp,bottom=128.dp),
@@ -50,6 +43,7 @@ fun ArticleFeed(
             itemsIndexed(articles,key={_,it->it.id}) { index,article ->
                 if(categoryCards)CoverArticleCard(article,true,Modifier.fillMaxWidth().aspectRatio(.8f).testTag("article-"+article.id),
                     "wave-cover-"+article.id,topAligned=true,squareBottom=true,shortBottomBlur=true,onClick={onArticle(article.id)},openWithLift=openWithLift,
+                    coverColor=if(usePaletteCover)categoryArticleCoverColor(article,index) else null,
                     exitRank=(index-if(index>articles.indexOfFirst {it.id==expansion?.source?.article?.id})1 else 0).coerceAtLeast(0))
                 else ArticleCard(article,onArticle,coverColor=if(listTag=="feed-home")homeArticleCoverColor(index) else null)
             }
@@ -67,8 +61,8 @@ fun ArticleCard(article: Article, onArticle: (String) -> Unit, coverColor: Color
         border=BorderStroke(0.5.dp,MaterialTheme.colorScheme.outlineVariant),
         modifier=Modifier.fillMaxWidth().testTag("article-"+article.id).clickable(enabled=enabled,onClickLabel="阅读文章") { onArticle(article.id) }) {
         Column {
-            if(coverColor!=null)Box(Modifier.fillMaxWidth().aspectRatio(372f/176f)
-                .background(coverColor).testTag("home-list-cover-"+article.id))
+            if(coverColor!=null)ArticleCoverArtwork(article,category=false,Modifier.fillMaxWidth().aspectRatio(372f/176f)
+                .testTag("home-list-cover-"+article.id),coverColor)
             else article.cover?.let { SampleCover(it,Modifier.fillMaxWidth().aspectRatio(372f/176f)) }
             Column(Modifier.fillMaxWidth().heightIn(min=168.dp).padding(17.dp)) {
                 Text(article.title,style=MaterialTheme.typography.titleLarge,maxLines=3,overflow=TextOverflow.Ellipsis)

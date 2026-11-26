@@ -59,6 +59,7 @@ fun BrowseScene(
     val shortcutHost=LocalNavigationShortcutHost.current
     val shortcuts=LocalShortcuts.current
     val ownsCircle=isMainCircleDrawOwner(circleKey)
+    val mainColors=mainCircleColors(circleKey,mainDestination.circleColors)
     val density=LocalDensity.current.density
     var sceneOrigin by remember {mutableStateOf(Offset.Zero)}
     var mainCenter by remember {mutableStateOf(Offset.Zero)}
@@ -112,11 +113,12 @@ fun BrowseScene(
             homeDraftActions -> ({drafts.expanded=!drafts.expanded})
             else -> onPrimary
         }
-        HomeDraftCircles(drafts,mainCenter,sceneOrigin)
+        val draftJoins=if(LocalMotionEnabled.current)drafts.dropletJoins(density,LocalDraftBox.current?.active==true) else emptyMap()
+        HomeDraftCircles(drafts,mainCenter,sceneOrigin,mainColors.background,draftJoins)
         MainCircle(mainDestination,navigate,mainPrimary,
             {drafts.expanded=false;navigationOpen=true},maxWidth,maxHeight,readerDock,!readerMode&&mainDestination!=destination,circleKey,sceneOrigin,mainCenter,{mainCenter=it},
             onNavigationStart={drafts.expanded=false},aboveDrafts=drafts.expanded||drafts.visible,
-            homeDraftActions=homeDraftActions,homeDraftsExpanded=drafts.expanded)
+            homeDraftActions=homeDraftActions,homeDraftsExpanded=drafts.expanded,mainColors=mainColors,draftJoins=draftJoins.values)
     }
     if (navigationOpen) SoBottomSheet(onDismissRequest={navigationOpen=false}) {close ->
         Column(Modifier.fillMaxWidth().padding(start=24.dp,end=24.dp,bottom=28.dp).navigationBarsPadding()) {
@@ -124,7 +126,8 @@ fun BrowseScene(
             Text("长按主圆可滑动选择",style=MaterialTheme.typography.bodySmall.withInterfaceTypeface(),
                 color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.padding(top=8.dp,bottom=18.dp))
             Destination.entries.forEach { item ->
-                TextButton(onClick={close {navigate(item)}},modifier=Modifier.fillMaxWidth().heightIn(min=56.dp).semantics { contentDescription="切换到"+item.label; selected=!readerMode&&item==destination }) {
+                TextButton(onClick={close {navigate(item)}},colors=accentTextButtonColors(),
+                    modifier=Modifier.fillMaxWidth().heightIn(min=56.dp).semantics { contentDescription="切换到"+item.label; selected=!readerMode&&item==destination }) {
                     SoIcon(item.symbol,tint=MaterialTheme.colorScheme.primary)
                     Text(item.label,Modifier.weight(1f).padding(start=16.dp),style=MaterialTheme.typography.titleMedium.withInterfaceTypeface())
                     if(!readerMode&&item==destination) Text("当前",style=MaterialTheme.typography.labelMedium.withInterfaceTypeface())
@@ -134,10 +137,14 @@ fun BrowseScene(
     }
 }
 
+private data class RadialBubbleVisual(val item: Destination,val offset: Offset,val amount: Float,val scale: Float,
+    val stretch: Float,val elasticStretch: Float,val colors: CircleColors,val iconAlpha: Float,val join: MenuDropJoin?)
+
 @Composable
 private fun BoxScope.MainCircle(destination: Destination,onNavigate: (Destination)->Unit,onPrimary: (() ->Unit)?,onAccessibleMenu: ()->Unit,
     availableWidth: Dp,availableHeight: Dp,readerDock: State<Float>?,returnToMainPage: Boolean,circleKey: Any,sceneOrigin: Offset,mainCenter: Offset,onCenter: (Offset)->Unit,
-    onNavigationStart: ()->Unit,aboveDrafts: Boolean,homeDraftActions: Boolean,homeDraftsExpanded: Boolean) {
+    onNavigationStart: ()->Unit,aboveDrafts: Boolean,homeDraftActions: Boolean,homeDraftsExpanded: Boolean,
+    mainColors: CircleColors,draftJoins: Collection<MenuDropJoin>) {
     val readerMode=readerDock!=null
     var expanded by remember {mutableStateOf(false)}
     var closing by remember {mutableStateOf(false)}
@@ -145,26 +152,30 @@ private fun BoxScope.MainCircle(destination: Destination,onNavigate: (Destinatio
     var pinReady by remember {mutableStateOf(false)}
     var pulledPosition by remember {mutableStateOf<Offset?>(null)}
     var pulledStretch by remember {mutableFloatStateOf(0f)}
-    var detachOrigin by remember {mutableStateOf(Offset.Zero)}
+    var detachOrigin by remember {mutableStateOf<Offset?>(null)}
+    var detachStretch by remember {mutableFloatStateOf(0f)}
     val detachProgress=remember {Animatable(0f)}
     val scope=rememberCoroutineScope()
     var menuJob by remember {mutableStateOf<Job?>(null)}
     val shortcuts=LocalShortcuts.current
     val allChoices=remember(destination,readerMode) {Destination.entries.filter {readerMode||it!=destination}}
     val choices=RadialNavigationGesture.menuChoices(destination,readerMode,shortcuts.items)
-    val progress=remember(choices) {List(choices.size) {Animatable(0f)}}
-    val pullReturn=remember {Animatable(1f)}
+    val drops=remember(choices) {List(choices.size) {MenuDropletState()}}
+    val pullReturn=remember {MenuDropletState(1f)}
     val placement=LocalNavigationPlacement.current
     val motion=LocalMotionEnabled.current
+    val pullShapes=choices.map {item ->key(item) {
+        animateFloatAsState(if(motion&&highlighted==item&&!closing&&detachOrigin==null)pulledStretch else 0f,
+            if(motion)RadialNavigationGesture.stretchSpring() else snap(),label="radial-liquid-pull")
+    }}
     // Only the attached -> detached edge starts this clock, never a pointer-position change.
-    LaunchedEffect(pinReady,motion) {
-        if(pinReady)detachProgress.animateTo(1f,if(motion)RadialNavigationGesture.detachMotion() else snap())
+    LaunchedEffect(detachOrigin!=null,motion) {
+        if(detachOrigin!=null)detachProgress.animateTo(1f,if(motion)RadialNavigationGesture.detachMotion() else snap())
         else detachProgress.snapTo(0f)
     }
     val expansion=LocalArticleExpansion.current
     val readerIcon=if(readerMode)1f else if(expansion?.active==true)SceneMotion.readingBody(
         expansion.contentProgress,expansion.returning,expansion.source!!.origin) else 0f
-    val mainColors=mainCircleColors(circleKey,destination.circleColors)
     val colorState=mainCircleColorState()
     val iconState=mainCircleIconState()
     val fusion=LocalShortcutFusionOverlay.current
@@ -195,20 +206,18 @@ private fun BoxScope.MainCircle(destination: Destination,onNavigate: (Destinatio
                 coroutineScope {
                     // Finish an in-flight handoff without starting another delay on release.
                     if(pin!=null&&motion)launch {snapshotFlow {detachProgress.value}.first {it>=1f}}
-                    choices.indices.filter {choices[it]!=picked}.forEachIndexed {order,index ->launch {
-                        if(motion)delay(order*35L)
-                        progress[index].animateTo(0f,if(motion)SceneMotion.navigationSpring() else snap())
-                    }}
-                    if(picked!=null&&pin==null)launch {
-                        val spec=if(!motion)snap() else if(target==null)RadialNavigationGesture.mergeMotion() else SceneMotion.navigationSpring()
-                        pullReturn.animateTo(0f,spec) {
-                            if(target!=null){colorState?.merge(1f-value);iconState?.merge(1f-value)}
+                    choices.indices.reversed().filter {pin==null||choices[it]!=picked}.forEachIndexed {rank,index ->
+                        launch {
+                            if(choices[index]==picked)pullReturn.animateTo(false,rank,motion) {amount ->
+                                if(target!=null){colorState?.merge(1f-amount);iconState?.merge(1f-amount)}
+                            } else drops[index].animateTo(false,rank,motion)
                         }
                     }
                 }
-                progress.forEach {it.snapTo(0f)}
+                drops.forEach {it.snapTo(0f)}
                 if(target!=null&&pin==null){colorState?.merge(1f);iconState?.merge(1f)}
                 expanded=false;closing=false;highlighted=null;pinReady=false;pulledPosition=null;pulledStretch=0f
+                detachOrigin=null
                 pullReturn.snapTo(1f)
                 if(target!=null&&pin!=null)shortcuts.save(viewport.shortcut(target.route,latestMainCenter+pin))
                 if(target!=null&&pin==null)currentNavigate(target)
@@ -216,6 +225,36 @@ private fun BoxScope.MainCircle(destination: Destination,onNavigate: (Destinatio
         }
     }
     val currentFinish by rememberUpdatedState(finish)
+    val visuals=if(expanded||closing)choices.mapIndexed {index,item ->key(item) {
+        val selected=highlighted==item&&pulledPosition!=null
+        val held=selected&&(!closing||pinReady)
+        val drop=if(selected)pullReturn else drops[index]
+        val amount=if(held)1f else drop.travel.value.coerceAtLeast(0f)
+        val targetOffset=if(selected)pulledPosition!!*amount else offsets[index]*amount
+        val offset=detachOrigin?.takeIf {motion&&selected&&pinReady}?.let {origin ->
+            androidx.compose.ui.geometry.lerp(origin,targetOffset,detachProgress.value)
+        }?:targetOffset
+        val hover by animateFloatAsState(if(selected&&!closing&&!pinReady)RadialNavigationGesture.SELECTED_SCALE else 1f,
+            if(motion)RadialNavigationGesture.scaleSpring() else snap(),label="nav-hover")
+        val scale=DropletMenuMotion.scale(amount)*hover
+        val elasticStretch=when {
+            !motion->0f
+            selected&&detachOrigin!=null->RadialNavigationGesture.detachRecoil(detachStretch,detachProgress.value)
+            else->pullShapes[index].value
+        }
+        val mergeStretch by animateFloatAsState(
+            if(motion&&selected&&pinReady&&!closing)RadialNavigationGesture.mergeStretch(targetOffset.getDistance()) else 0f,
+            if(motion)RadialNavigationGesture.stretchSpring() else snap(),label="radial-liquid-return")
+        val stretch=elasticStretch+mergeStretch
+        val targetColors=if(selected)item.circleColors else mainColors
+        val background by animateColorAsState(targetColors.background,tween(if(motion)120 else 0),label="radial-background")
+        val foreground by animateColorAsState(targetColors.foreground,tween(if(motion)120 else 0),label="radial-foreground")
+        val join=if(motion&&!held)DropletMenuMotion.join(offset,scale,density,background,stretch,elasticStretch) else null
+        RadialBubbleVisual(item,offset,amount,scale,stretch,elasticStretch,CircleColors(background,foreground),
+            if(held)1f else drop.icon.value,join)
+    }} else emptyList()
+    val radialJoins=visuals.mapNotNull {it.join}
+    val joinedSilhouettes=(radialJoins+draftJoins).map {it.silhouette}
     BackHandler(expanded) {finish(null,null)}
     Box(Modifier.align(AbsoluteAlignment.BottomRight).zIndex(if(aboveDrafts)4f else 0f).imePadding().navigationBarsPadding()
         .absolutePadding(right=20.dp,bottom=18.dp)
@@ -229,31 +268,24 @@ private fun BoxScope.MainCircle(destination: Destination,onNavigate: (Destinatio
         .mainCircleOverlay(circleKey).onGloballyPositioned {
             onCenter((it.localToRoot(Offset(it.size.width/2f,it.size.height/2f))-sceneOrigin)/density)
         }) {
-        choices.forEachIndexed {index,item ->
-            val selected=highlighted==item&&pulledPosition!=null
-            val amount=if(selected)if(closing&&!pinReady)pullReturn.value.coerceAtLeast(0f) else 1f else progress[index].value.coerceAtLeast(0f)
-            val targetOffset=if(selected)pulledPosition!!*amount else offsets[index]*amount
-            val offset=if(motion&&selected&&pinReady)
-                androidx.compose.ui.geometry.lerp(detachOrigin,targetOffset,detachProgress.value) else targetOffset
-            val hover by animateFloatAsState(if(selected&&!closing&&!pinReady)RadialNavigationGesture.SELECTED_SCALE else 1f,
-                if(motion)RadialNavigationGesture.scaleSpring() else snap(),label="nav-hover")
-            val scale=(.7f+.3f*amount)*hover
-            val stretch by animateFloatAsState(if(motion&&selected&&!closing)pulledStretch else 0f,
-                if(motion)RadialNavigationGesture.stretchSpring() else snap(),label="radial-liquid-pull")
-            val targetColors=if(selected)item.circleColors else mainColors
-            val background by animateColorAsState(targetColors.background,tween(if(motion)120 else 0),label="radial-background")
-            val foreground by animateColorAsState(targetColors.foreground,tween(if(motion)120 else 0),label="radial-foreground")
-            val colors=CircleColors(background,foreground)
-            if(expanded||closing) {
+        MenuDropletBridges(Offset(28f,28f),mainColors.background,radialJoins,Modifier.matchParentSize())
+        if(joinedSilhouettes.isNotEmpty()&&fusion?.joinedShadow!=true) {
+            FusionShadow(DropletMenuMotion.coreCenter(density),joinedSilhouettes,tag="menu-droplet-shadow")
+        }
+        visuals.forEach {visual ->
+            key(visual.item) {
+                val item=visual.item
+                val offset=visual.offset
                 Column(Modifier.wrapContentSize(Alignment.TopStart,unbounded=true).offset(offset.x.dp,(offset.y+2f).dp).width(56.dp)
                     .testTag("radial-"+item.route),horizontalAlignment=Alignment.CenterHorizontally) {
-                    NavigationBubble(item.symbol,colors,scale,stretch,-offset,Modifier)
+                    NavigationBubble(item.symbol,visual.colors,visual.scale,visual.stretch,-offset,Modifier,
+                        shadowElevation=if(visual.join==null)3.dp else 0.dp,elasticStretch=visual.elasticStretch,iconAlpha=visual.iconAlpha)
                     val labelAlpha by animateFloatAsState(if(highlighted==item&&!closing)1f else 0f,
                         tween(if(motion)120 else 0),label="nav-label")
                     Text(if(pinReady&&highlighted==item)"松手固定" else item.label,
                         style=MaterialTheme.typography.labelMedium.copy(fontFamily=NavigationLabelFont,fontWeight=FontWeight.Bold).withInterfaceTypeface(),
                         maxLines=1,softWrap=false,modifier=Modifier.wrapContentWidth(unbounded=true).padding(top=4.dp)
-                            .graphicsLayer {alpha=labelAlpha*amount.coerceIn(0f,1f)})
+                            .graphicsLayer {alpha=labelAlpha*visual.amount.coerceIn(0f,1f)})
                 }
             }
         }
@@ -261,7 +293,7 @@ private fun BoxScope.MainCircle(destination: Destination,onNavigate: (Destinatio
             modifier=Modifier.size(56.dp).graphicsLayer {
                 shape=CircleShape
                 clip=false
-                shadowElevation=if(fusion?.joinedShadow==true)0f else 6.dp.toPx()
+                shadowElevation=if(fusion?.joinedShadow==true||joinedSilhouettes.isNotEmpty())0f else 6.dp.toPx()
             }.testTag("main-circle").semantics {
                 role=Role.Button
                 contentDescription=if(readerMode)"打开目录" else destination.label+"主圆"
@@ -288,9 +320,8 @@ private fun BoxScope.MainCircle(destination: Destination,onNavigate: (Destinatio
                         expanded=true;menuJob?.cancel()
                         menuJob=scope.launch {
                             pullReturn.snapTo(1f)
-                            coroutineScope {progress.forEachIndexed {index,item ->launch {
-                                if(motion)delay(index*40L)
-                                item.animateTo(1f,if(motion)SceneMotion.navigationSpring() else snap())
+                            coroutineScope {drops.forEachIndexed {index,item ->launch {
+                                item.animateTo(true,index,motion)
                             }}}
                         }
                         haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
@@ -308,8 +339,8 @@ private fun BoxScope.MainCircle(destination: Destination,onNavigate: (Destinatio
                                         acquired=index;pullOrigin=pointer
                                         haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
                                     }
-                                    val tension=if(detached)0f else RadialNavigationGesture.pullProgress(pointer,pullOrigin,offsets[index])
                                     if(!detached&&RadialNavigationGesture.canPin(pointer)) {
+                                        detachStretch=pullShapes[index].value
                                         detachOrigin=pulledPosition?:offsets[index]
                                         detached=true
                                         haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
@@ -318,7 +349,7 @@ private fun BoxScope.MainCircle(destination: Destination,onNavigate: (Destinatio
                                     val center=viewport.constrain(latestMainCenter+desired)-latestMainCenter
                                     target=choices[index];highlighted=target;pulledPosition=center
                                     pinReady=detached
-                                    pulledStretch=if(detached)RadialNavigationGesture.mergeStretch(center.getDistance()) else .8f*tension
+                                    if(!detached)pulledStretch=.8f*RadialNavigationGesture.pullProgress(pointer,pullOrigin,offsets[index])
                                     pin=if(detached)center else null
                                 } else {
                                     acquired=null;target=null;pin=null
@@ -342,17 +373,17 @@ private fun BoxScope.MainCircle(destination: Destination,onNavigate: (Destinatio
 
 @Composable
 internal fun NavigationBubble(symbol: SoSymbol,colors: CircleColors,scale: Float,stretch: Float,towardMain: Offset,modifier: Modifier,
-    shadowElevation: Dp=3.dp) {
-    NavigationBubble(colors,scale,stretch,towardMain,modifier,shadowElevation) {
+    shadowElevation: Dp=3.dp,elasticStretch: Float=stretch,iconAlpha: Float=1f) {
+    NavigationBubble(colors,scale,stretch,towardMain,modifier,shadowElevation,elasticStretch,iconAlpha) {
         SoIcon(symbol,modifier=Modifier.size(NavigationCircleIconSize),tint=colors.foreground)
     }
 }
 
 @Composable
 internal fun NavigationBubble(colors: CircleColors,scale: Float,stretch: Float,towardMain: Offset,modifier: Modifier,
-    shadowElevation: Dp=3.dp,icon: @Composable ()->Unit) {
-    Surface(shape=LiquidCircleShape(towardMain,stretch),color=colors.background,contentColor=colors.foreground,shadowElevation=shadowElevation,
+    shadowElevation: Dp=3.dp,elasticStretch: Float=stretch,iconAlpha: Float=1f,icon: @Composable ()->Unit) {
+    Surface(shape=LiquidCircleShape(towardMain,stretch,elasticStretch),color=colors.background,contentColor=colors.foreground,shadowElevation=shadowElevation,
         modifier=modifier.size(NavigationCircleSize).graphicsLayer {scaleX=scale;scaleY=scale}) {
-        Box(contentAlignment=Alignment.Center) {icon()}
+        Box(Modifier.graphicsLayer {alpha=iconAlpha},contentAlignment=Alignment.Center) {icon()}
     }
 }

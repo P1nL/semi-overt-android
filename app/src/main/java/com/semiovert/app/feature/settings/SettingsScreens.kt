@@ -65,7 +65,8 @@ fun SettingsScreen(state: PreviewState,model: PreviewViewModel,onBack: ()->Unit,
                 modifier=spark.modifier.testTag("follow-system-theme").semantics {contentDescription="主题跟随系统"})
         }
         SettingRow("调整导航位置","在底部安全区域移动主圆") {onRoute(ScreenRoutes.NAV_POSITION)}
-        HorizontalDivider(color=MaterialTheme.colorScheme.outlineVariant)
+        HorizontalDivider(Modifier.padding(vertical=16.dp),color=MaterialTheme.colorScheme.outlineVariant)
+        Text("记录",style=sectionTitle,modifier=Modifier.padding(bottom=8.dp))
         Row(Modifier.fillMaxWidth().heightIn(min=72.dp),verticalAlignment=Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {Text("本地修改记录",style=itemTitle);Text(if(state.signedIn)"查看文章增删与版本对比" else "登录后使用",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
             val spark=rememberSparkControl()
@@ -76,19 +77,20 @@ fun SettingsScreen(state: PreviewState,model: PreviewViewModel,onBack: ()->Unit,
             },enabled=state.signedIn,interactionSource=spark.source,modifier=spark.modifier.semantics {contentDescription="本地修改记录开关"})
         }
         if(business==null||owner!=null) SettingRow("清除本地记录","清除快照，保留每日汇总") {confirmation="clear"}
-        if(business!=null&&owner!=null) SettingRow("创作记录","查看创作日历") {onRoute(ScreenRoutes.RECORDS)}
         if(business==null&&state.snapshotsCleared) {
             val spark=rememberSparkControl()
-            TextButton(onClick=model::restoreExamples,interactionSource=spark.source,modifier=spark.modifier) {Text("恢复本地快照")}
+            TextButton(onClick=model::restoreExamples,interactionSource=spark.source,colors=accentTextButtonColors(),modifier=spark.modifier) {Text("恢复本地快照")}
         }
         HorizontalDivider(Modifier.padding(vertical=16.dp),color=MaterialTheme.colorScheme.outlineVariant)
         Text("账号",style=sectionTitle,modifier=Modifier.padding(bottom=8.dp))
         SettingRow("重置密码","验证邮箱并设置新密码") {onRoute(ScreenRoutes.FORGOT)}
         if(state.signedIn) {
             val spark=rememberSparkControl()
-            OutlinedButton(onClick={confirmation="logout"},enabled=!busy,interactionSource=spark.source,modifier=Modifier.fillMaxWidth().padding(top=20.dp).heightIn(min=52.dp).then(spark.modifier)) {Text(if(busy)"正在退出…" else "退出登录")}
+            OutlinedButton(onClick={confirmation="logout"},enabled=!busy,interactionSource=spark.source,
+                colors=ButtonDefaults.outlinedButtonColors(contentColor=MaterialTheme.colorScheme.accentInk),
+                modifier=Modifier.fillMaxWidth().padding(top=20.dp).heightIn(min=52.dp).then(spark.modifier)) {Text(if(busy)"退出中" else "退出登录")}
         }
-        serverError?.let { Text(it,Modifier.padding(top=12.dp),color=MaterialTheme.colorScheme.error) }
+        serverError?.let { StatusText(it,Modifier.padding(top=12.dp),color=MaterialTheme.colorScheme.error) }
         Spacer(Modifier.height(32.dp))
     }
     when(confirmation) {

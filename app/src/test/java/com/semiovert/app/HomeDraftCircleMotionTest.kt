@@ -14,11 +14,10 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class HomeDraftCircleMotionTest {
-    @Test fun expansionIsFasterAndKeepsItsSmallSpringOvershoot() {
+    @Test fun shiftingTheExistingDraftSlotKeepsItsSmallSpringOvershoot() {
         val previous = TargetBasedAnimation(SceneMotion.navigationSpring(), Float.VectorConverter, 0f, 1f)
-        val current = TargetBasedAnimation(HomeDraftCircleMotion.expansion(), Float.VectorConverter, 0f, 1f)
+        val current = TargetBasedAnimation(HomeDraftCircleMotion.slotShift(), Float.VectorConverter, 0f, 1f)
         assertTrue(current.durationNanos < previous.durationNanos * .8f)
-        assertEquals(20L, HomeDraftCircleMotion.EXPAND_STAGGER_MS)
         val peak = (0..80).maxOf { current.getValueFromNanos(it * 10_000_000L) }
         assertTrue(peak > 1f)
         assertTrue(peak < 1.04f)

@@ -90,6 +90,16 @@ class RadialNavigationGestureTest {
             assertEquals(pointer,androidx.compose.ui.geometry.lerp(Offset(0f,-150f),pointer,progress))
     }
 
+    @Test fun detachRecoilStartsAtTheDrawnStretchAndSettlesWithinThePositionHandoff() {
+        val animation=TargetBasedAnimation(RadialNavigationGesture.detachMotion(),Float.VectorConverter,0f,1f)
+        val initialStretch=.72f
+        fun stretchAt(time: Long)=RadialNavigationGesture.detachRecoil(initialStretch,animation.getValueFromNanos(time))
+        assertEquals(initialStretch,stretchAt(0L),0f)
+        assertTrue(stretchAt(16_000_000L) in 0f..initialStretch)
+        assertTrue((32L..112L step 16L).any {stretchAt(it*1_000_000L)<-.01f})
+        assertEquals(0f,stretchAt(animation.durationNanos),0f)
+    }
+
     @Test fun mergeDeformsOnlyVeryNearMainAndDropsWithin75DpAreAbsorbed() {
         assertEquals(0f,RadialNavigationGesture.mergeStretch(100f),0f)
         assertEquals(0f,RadialNavigationGesture.mergeStretch(84f),0f)
@@ -104,7 +114,7 @@ class RadialNavigationGestureTest {
         assertEquals(listOf(Destination.HOME,Destination.CATEGORY),RadialNavigationGesture.menuChoices(Destination.HOME,true,shortcuts))
     }
 
-    @Test fun breakRecoilAndSelectedScaleUseRealUnderdampedSprings() {
+    @Test fun returnStretchAndSelectedScaleUseRealUnderdampedSprings() {
         val stretch=TargetBasedAnimation(RadialNavigationGesture.stretchSpring(),Float.VectorConverter,.8f,0f)
         val scale=TargetBasedAnimation(RadialNavigationGesture.scaleSpring(),Float.VectorConverter,1.14f,1f)
         val samples=(0..60).map {it*10_000_000L}

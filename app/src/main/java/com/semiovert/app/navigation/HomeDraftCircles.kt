@@ -19,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.lerp
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -36,11 +37,9 @@ import androidx.compose.ui.zIndex
 import com.semiovert.app.R
 import com.semiovert.app.core.designsystem.CircleColors
 import com.semiovert.app.core.designsystem.LocalMotionEnabled
-import com.semiovert.app.core.designsystem.SceneMotion
 import com.semiovert.app.core.designsystem.SoPalette
 import com.semiovert.app.core.designsystem.withInterfaceTypeface
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 
@@ -54,8 +53,23 @@ internal class HomeDraftMenuState {
     var pulledStretch by mutableFloatStateOf(0f)
     var pendingAction by mutableStateOf<HomeDraftAction?>(null)
     val order = mutableStateListOf<HomeDraftAction>()
-    val progress = List(2) { Animatable(0f) }
+    val drops = List(2) { MenuDropletState() }
     val slotY = List(2) { Animatable(0f) }
+
+    fun dockedOffset(item: HomeDraftAction) =
+        Offset(0f, slotY[item.ordinal].value * drops[item.ordinal].travel.value.coerceAtLeast(0f))
+
+    fun dropletJoins(density: Float, draftBoxActive: Boolean): Map<HomeDraftAction, MenuDropJoin> {
+        if (!expanded && !visible) return emptyMap()
+        return buildMap {
+            for (item in order) {
+                if (item == detached || (item == pressed && pulledPosition != null) || (item == HomeDraftAction.BOX && draftBoxActive)) continue
+                val scale = DropletMenuMotion.scale(drops[item.ordinal].travel.value)
+                val join = DropletMenuMotion.join(dockedOffset(item), scale, density, item.colors.background)
+                if (join != null) put(item, join)
+            }
+        }
+    }
 
     fun requestAction(action: HomeDraftAction) {
         if (pendingAction != null) return
@@ -81,9 +95,8 @@ internal fun homeDraftOrder(previous: List<HomeDraftAction>, available: List<Hom
     previous.filter { it in available } + available.filter { it !in previous }
 
 internal object HomeDraftCircleMotion {
-    const val EXPAND_STAGGER_MS = 20L
     fun slotOffset(index: Int, count: Int) = Offset(0f, -76f - 58f * (count - 1 - index))
-    fun expansion() = spring<Float>(dampingRatio = .78f, stiffness = 360f, visibilityThreshold = .001f)
+    fun slotShift() = spring<Float>(dampingRatio = .78f, stiffness = 360f, visibilityThreshold = .001f)
 }
 
 @Composable
@@ -94,13 +107,24 @@ internal fun HomeDraftIcon(action: HomeDraftAction) {
 }
 
 @Composable
-internal fun HomeDraftCircles(state: HomeDraftMenuState, mainCenter: Offset, sceneOrigin: Offset) {
+internal fun HomeDraftCircles(
+    state: HomeDraftMenuState, mainCenter: Offset, sceneOrigin: Offset, mainColor: Color,
+    joins: Map<HomeDraftAction, MenuDropJoin>,
+) {
     val motion = LocalMotionEnabled.current
     val shortcuts = LocalShortcuts.current
     val onAction by rememberUpdatedState(LocalHomeDraftAction.current)
     val draftBox = LocalDraftBox.current
     val available = HomeDraftAction.entries.filter { action -> shortcuts.items.none { it.route == action.route } }
     val actions = state.order.toList()
+    val pullShapes = actions.associateWith { item ->
+        key(item.route) {
+            animateFloatAsState(
+                if (motion && state.pressed == item) state.pulledStretch else 0f,
+                if (motion) RadialNavigationGesture.stretchSpring() else snap(), label = item.route + "-stretch",
+            )
+        }
+    }
     val host = LocalNavigationShortcutHost.current
     val density = LocalDensity.current.density
     val inputOwner = remember { Any() }
@@ -109,7 +133,7 @@ internal fun HomeDraftCircles(state: HomeDraftMenuState, mainCenter: Offset, sce
     val activate: (HomeDraftAction) -> Unit = { action ->
         if (action == HomeDraftAction.BOX && draftBox != null) {
             val offset = state.pulledPosition?.takeIf { state.pressed == action }
-                ?: Offset(0f, state.slotY[action.ordinal].value * state.progress[action.ordinal].value)
+                ?: state.dockedOffset(action)
             draftBox.open(sceneOrigin + (mainCenter + offset) * density)
         } else state.requestAction(action)
     }
@@ -122,10 +146,11 @@ internal fun HomeDraftCircles(state: HomeDraftMenuState, mainCenter: Offset, sce
         if (state.expanded || state.visible) {
             host?.draftMenu = DockedDraftMenu(
                 owner = inputOwner,
-                items = actions.filter { state.expanded && it != state.detached && state.progress[it.ordinal].value > .01f }.map { item ->
+                items = actions.filter { state.expanded && it != state.detached && state.drops[it.ordinal].travel.value > .01f }.map { item ->
                     val offset = if (state.pressed == item) state.pulledPosition else null
                     DockedDraftCircle(item, sceneOrigin +
-                        (mainCenter + (offset ?: Offset(0f, state.slotY[item.ordinal].value * state.progress[item.ordinal].value))) * density)
+                        (mainCenter + (offset ?: state.dockedOffset(item))) * density,
+                        pullShapes.getValue(item))
                 },
                 press = {
                     returnJob?.cancel()
@@ -147,7 +172,7 @@ internal fun HomeDraftCircles(state: HomeDraftMenuState, mainCenter: Offset, sce
                         val stretch = state.pulledStretch
                         returnJob = scope.launch {
                             animate(1f, 0f, animationSpec = if (motion) RadialNavigationGesture.mergeMotion() else snap()) { value, _ ->
-                                val rest = Offset(0f, state.slotY[item.ordinal].value * state.progress[item.ordinal].value)
+                                val rest = state.dockedOffset(item)
                                 state.pulledPosition = lerp(rest, from, value)
                                 state.pulledStretch = stretch * value
                             }
@@ -170,7 +195,7 @@ internal fun HomeDraftCircles(state: HomeDraftMenuState, mainCenter: Offset, sce
         val added = next.filter { it !in state.order }
         // Reset a returning circle before it becomes drawable; it must emerge from the main circle.
         added.forEach {
-            state.progress[it.ordinal].snapTo(0f)
+            state.drops[it.ordinal].snapTo(0f)
             state.slotY[it.ordinal].snapTo(HomeDraftCircleMotion.slotOffset(next.indexOf(it), next.size).y)
         }
         if (state.detached in added) state.detached = null
@@ -178,7 +203,7 @@ internal fun HomeDraftCircles(state: HomeDraftMenuState, mainCenter: Offset, sce
         state.order.addAll(next)
         if (!state.expanded && !state.visible) {
             next.forEachIndexed { index, item ->
-                state.progress[item.ordinal].snapTo(0f)
+                state.drops[item.ordinal].snapTo(0f)
                 state.slotY[item.ordinal].snapTo(HomeDraftCircleMotion.slotOffset(index, next.size).y)
             }
         } else {
@@ -190,15 +215,11 @@ internal fun HomeDraftCircles(state: HomeDraftMenuState, mainCenter: Offset, sce
                 next.forEachIndexed { index, item ->
                     launch {
                         state.slotY[item.ordinal].animateTo(HomeDraftCircleMotion.slotOffset(index, next.size).y,
-                            if (motion) HomeDraftCircleMotion.expansion() else snap())
+                            if (motion) HomeDraftCircleMotion.slotShift() else snap())
                     }
                     launch {
                         val rank = if (state.expanded) next.lastIndex - index else index
-                        if (motion) delay(rank * if (state.expanded) HomeDraftCircleMotion.EXPAND_STAGGER_MS else 35L)
-                        state.progress[item.ordinal].animateTo(
-                            if (state.expanded) 1f else 0f,
-                            if (!motion) snap() else if (state.expanded) HomeDraftCircleMotion.expansion() else SceneMotion.navigationSpring(),
-                        )
+                        state.drops[item.ordinal].animateTo(state.expanded, rank, motion)
                     }
                 }
             }
@@ -221,19 +242,21 @@ internal fun HomeDraftCircles(state: HomeDraftMenuState, mainCenter: Offset, sce
 
     // A scene-sized host keeps circles outside the main circle's bounds tappable.
     Box(Modifier.fillMaxSize().zIndex(3f)) {
+        MenuDropletBridges(mainCenter, mainColor, joins.values, Modifier.matchParentSize())
         Box(Modifier.fillMaxSize().testTag("home-draft-dismiss")
             .clickable(
                 interactionSource = null, indication = null, enabled = state.expanded,
                 onClickLabel = "收起草稿操作",
             ) { state.expanded = false })
-        val labelAnchor = actions.minOfOrNull { state.slotY[it.ordinal].value * state.progress[it.ordinal].value } ?: 0f
+        val labelAnchor = actions.minOfOrNull { state.dockedOffset(it).y } ?: 0f
         actions.filter { it != state.detached }.forEach { item ->
             // Detaching one item must not transfer its remembered press animation to its neighbour.
             key(item.route) {
                 val index = item.ordinal
-                val amount = state.progress[index].value.coerceAtLeast(0f)
+                val drop = state.drops[index]
+                val amount = drop.travel.value.coerceAtLeast(0f)
                 val offset = state.pulledPosition?.takeIf { state.pressed == item }
-                    ?: Offset(0f, state.slotY[index].value * amount)
+                    ?: state.dockedOffset(item)
                 val interactions = remember { MutableInteractionSource() }
                 val pressed by interactions.collectIsPressedAsState()
                 val hover by animateFloatAsState(
@@ -245,10 +268,8 @@ internal fun HomeDraftCircles(state: HomeDraftMenuState, mainCenter: Offset, sce
                     if ((pressed || state.pressed == item) && state.expanded) 1f else 0f,
                     tween(if (motion) 120 else 0), label = item.route + "-label",
                 )
-                val stretch by animateFloatAsState(
-                    if (motion && state.pressed == item) state.pulledStretch else 0f,
-                    if (motion) RadialNavigationGesture.stretchSpring() else snap(), label = item.route + "-stretch",
-                )
+                val stretch = pullShapes.getValue(item).value
+                val joined = item in joins
                 Box(Modifier.offset((mainCenter.x + offset.x - 34f).dp, (mainCenter.y + offset.y - 34f).dp)
                     .size(68.dp).testTag(item.route)
                     .semantics {
@@ -268,8 +289,11 @@ internal fun HomeDraftCircles(state: HomeDraftMenuState, mainCenter: Offset, sce
                         enabled = state.expanded, role = Role.Button,
                     ) { activate(item) }) {
                     NavigationBubble(
-                        item.colors, (.7f + .3f * amount) * hover, stretch, -offset,
+                        item.colors, DropletMenuMotion.scale(amount) * if (joined) 1f else hover,
+                        if (joined) 0f else stretch, -offset,
                         Modifier.align(Alignment.Center),
+                        shadowElevation = if (joined) 0.dp else 3.dp,
+                        iconAlpha = drop.icon.value,
                     ) {
                         HomeDraftIcon(item)
                     }

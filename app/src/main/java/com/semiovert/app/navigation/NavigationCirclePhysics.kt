@@ -19,6 +19,7 @@ internal object RadialNavigationGesture {
     fun scaleSpring()=spring<Float>(dampingRatio=.55f,stiffness=420f,visibilityThreshold=.001f)
     fun stretchSpring()=spring<Float>(dampingRatio=.52f,stiffness=260f,visibilityThreshold=.001f)
     fun detachMotion()=tween<Float>(durationMillis=DETACH_MILLIS,easing=FastOutSlowInEasing)
+    fun detachRecoil(initialStretch: Float,progress: Float)=initialStretch*(1f-progress)*(1f-2f*progress)
     fun neckAppearMotion()=tween<Float>(durationMillis=NECK_APPEAR_MILLIS,easing=FastOutSlowInEasing)
     fun mergeMotion()=spring<Float>(dampingRatio=1f,stiffness=180f,visibilityThreshold=.001f)
 

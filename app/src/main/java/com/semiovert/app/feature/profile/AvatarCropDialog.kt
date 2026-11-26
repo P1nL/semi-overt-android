@@ -44,6 +44,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.semiovert.app.core.designsystem.LocalMotionEnabled
+import com.semiovert.app.core.designsystem.StatusText
+import com.semiovert.app.core.designsystem.accentTextButtonColors
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -110,7 +112,7 @@ internal fun AvatarCropDialog(
                             TextButton(onClick = {
                                 settle?.cancel()
                                 crop = AvatarCrop()
-                            }, enabled = !saving && crop != AvatarCrop()) { Text("重置") }
+                            }, enabled = !saving && crop != AvatarCrop(), colors = accentTextButtonColors()) { Text("重置") }
                         }
                         Text("头像", Modifier.weight(1f).semantics { heading() }, textAlign = TextAlign.Center,
                             style = MaterialTheme.typography.titleMedium)
@@ -119,7 +121,7 @@ internal fun AvatarCropDialog(
                                 settle?.cancel()
                                 crop = geometry.clamp(crop)
                                 onConfirm(crop)
-                            }, enabled = !saving, modifier = Modifier.testTag("avatar-crop-confirm")) { Text("完成") }
+                            }, enabled = !saving, colors = accentTextButtonColors(), modifier = Modifier.testTag("avatar-crop-confirm")) { Text("完成") }
                         }
                     }
                     Canvas(Modifier.size(side).clip(RoundedCornerShape(16.dp)).background(Color.Black)
@@ -220,9 +222,9 @@ internal fun AvatarCropDialog(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)
                             .testTag("avatar-crop-zoom").semantics { contentDescription = "缩放" })
                     if (saving) LinearProgressIndicator(Modifier.fillMaxWidth())
-                    if (saveFailed) Text("无法保存头像", color = MaterialTheme.colorScheme.error,
+                    if (saveFailed) StatusText("无法保存头像", color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall)
-                    TextButton(onClick = onCancel, enabled = !saving) { Text("取消") }
+                    TextButton(onClick = onCancel, enabled = !saving, colors = accentTextButtonColors()) { Text("取消") }
                 }
             }
         }

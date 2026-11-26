@@ -224,7 +224,7 @@ private fun PasswordDotField(
                 if(statusText!=null)liveRegion=LiveRegionMode.Polite
             }) {
                 ScrambleText(if(labelVisible)statusText?:label else "",animateOnEnter=animateLabelOnEnter,
-                    color=if(complete)MaterialTheme.colorScheme.primary else LocalContentColor.current)
+                    color=if(complete)MaterialTheme.colorScheme.accentInk else LocalContentColor.current)
             }
         },trailingIcon=trailing,pressed=pressed,
             modifier=Modifier.stitchedFocusOnTap(source,focusRequester,keyboard)) {

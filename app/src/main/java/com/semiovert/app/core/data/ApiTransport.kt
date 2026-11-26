@@ -12,9 +12,12 @@ import java.net.URLEncoder
 
 internal const val PRODUCTION_API = "https://api.semi-overt.com/api/v1"
 
-internal class ApiFailure(val status: Int, message: String, val retryAfter: Long? = null) : Exception(message) {
+internal class ApiFailure(val status: Int, message: String, val retryAfter: Long? = null,
+    val disconnected: Boolean = false) : Exception(message) {
     constructor(message: String) : this(0, message)
 }
+
+internal val Throwable.canUseSnapshot get() = this is ApiFailure && (disconnected || status in 500..599 || status == 429)
 
 internal fun Throwable.userMessage() = (this as? ApiFailure)?.message ?: "操作未完成，请重试"
 internal fun JSONObject.text(key: String): String? = if (isNull(key)) null else optString(key).takeIf { it.isNotBlank() }
@@ -96,9 +99,9 @@ internal class ApiTransport(baseUrl: String) {
                 .filter { it.key.equals("Set-Cookie", ignoreCase = true) }.flatMap { it.value }
             ApiReply(envelope.opt("data").takeUnless { it === JSONObject.NULL }, cookies)
         } catch (_: java.net.SocketTimeoutException) {
-            throw ApiFailure("连接超时，请稍后重试")
+            throw ApiFailure(0, "连接超时，请稍后重试", disconnected = true)
         } catch (_: IOException) {
-            throw ApiFailure("无法连接服务器，请检查网络后重试")
+            throw ApiFailure(0, "连接失败，请检查网络", disconnected = true)
         } finally {
             connection.disconnect()
         }

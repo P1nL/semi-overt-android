@@ -2,18 +2,89 @@ name: Android release draft
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
-
-concurrency:
-  group: android-release-${{ github.ref }}
-  cancel-in-progress: false
+  workflow_dispatch:
 
 jobs:
+  tag:
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && !github.event.created && !github.event.deleted }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: write
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out pushed commit
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Detect release version change
+        id: version
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          import subprocess
+
+          def version_at(commit):
+              config = subprocess.check_output(
+                  ["git", "show", f"{commit}:app/build.gradle.kts"], encoding="utf-8"
+              )
+              codes = re.findall(r"(?m)^[ \t]*versionCode[ \t]*=[ \t]*([1-9][0-9]*)[ \t]*(?://.*)?$", config)
+              names = re.findall(r'(?m)^[ \t]*versionName[ \t]*=[ \t]*"([^"\n]+)"[ \t]*(?://.*)?$', config)
+              if len(codes) != 1 or len(names) != 1:
+                  raise SystemExit(f"::error::Expected literal versionCode and versionName at {commit}.")
+              return int(codes[0]), names[0]
+
+          previous_code, previous_name = version_at(os.environ["BEFORE_SHA"])
+          code, name = version_at(os.environ["GITHUB_SHA"])
+          if code <= previous_code or name == previous_name:
+              print("Release skipped: versionCode must increase and versionName must change.")
+          else:
+              tag = f"v{name}"
+              if not re.fullmatch(r"v[0-9][0-9A-Za-z._+-]*", tag):
+                  raise SystemExit("::error::Use a versionName like 1.1.0 or 1.1.0-beta.1.")
+              subprocess.run(["git", "check-ref-format", f"refs/tags/{tag}"], check=True)
+              with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+                  print(f"tag={tag}", file=output)
+          PY
+
+      - name: Create tag and dispatch release
+        if: ${{ steps.version.outputs.tag != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          ref="refs/tags/$RELEASE_TAG"
+          if git show-ref --verify --quiet "$ref"; then
+            if [[ "$(git rev-parse "$ref^{commit}")" != "$GITHUB_SHA" ]]; then
+              echo "::error::Tag $RELEASE_TAG already points to a different commit. Choose a new versionName."
+              exit 1
+            fi
+          else
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+              --raw-field "ref=$ref" --raw-field "sha=$GITHUB_SHA" --silent
+          fi
+
+          gh api --method POST "repos/$GITHUB_REPOSITORY/actions/workflows/android-release.yml/dispatches" \
+            --raw-field "ref=$RELEASE_TAG"
+
   release:
-    if: ${{ !github.event.deleted }}
+    if: ${{ startsWith(github.ref, 'refs/tags/v') && !github.event.deleted }}
     runs-on: ubuntu-24.04
     environment: android-release
+    concurrency:
+      group: android-release-${{ github.ref }}
+      cancel-in-progress: false
     permissions:
       contents: write
     defaults:

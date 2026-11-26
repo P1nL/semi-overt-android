@@ -13,8 +13,8 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class NavigationCircleColorTest {
-    @Test fun homeCircleUsesTheProjectGreen() {
-        assertEquals(Color(0xFF158624), SoGreen)
+    @Test fun homeCircleUsesTheProjectTeal() {
+        assertEquals(Color(0xFF118480), SoGreen)
         assertEquals(SoGreen, Destination.HOME.circleColors.background)
     }
     @Test fun glyphAndColorShareTheReturnProgressBeforeTheNewPageExists() {

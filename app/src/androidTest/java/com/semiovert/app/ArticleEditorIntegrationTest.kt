@@ -35,15 +35,19 @@ import androidx.test.espresso.matcher.ViewMatchers.isAssignableFrom
 import androidx.test.espresso.matcher.ViewMatchers.withContentDescription
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.semiovert.app.core.data.PreviewViewModel
+import com.semiovert.app.core.data.ProfileImages
 import com.semiovert.app.core.designsystem.LocalMotionEnabled
 import com.semiovert.app.core.designsystem.SoTheme
 import com.semiovert.app.core.model.NavigationShortcut
+import com.semiovert.app.core.model.PreviewProfile
 import com.semiovert.app.core.model.PreviewState
 import com.semiovert.app.core.model.ThemeMode
 import com.semiovert.app.feature.editor.ArticleEditorScreen
 import com.semiovert.app.feature.editor.InkRevealLayout
 import com.semiovert.app.feature.editor.EditorPalette
+import com.semiovert.app.feature.editor.rememberArticleEditorSession
 import com.semiovert.app.navigation.AppNavigation
+import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.json.JSONTokener
 import org.junit.Assert.*
@@ -663,6 +667,81 @@ class ArticleEditorIntegrationTest {
         app.onNodeWithTag("home-draft-dismiss").assertDoesNotExist()
     }
 
+    @Test fun fiftyVisibleCharactersOpenAnAlignedPreviewWithReversibleMotion() {
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        val photo = runBlocking {
+            checkNotNull(ProfileImages.save(context) {
+                Bitmap.createBitmap(8, 8, Bitmap.Config.ARGB_8888).apply { eraseColor(android.graphics.Color.CYAN) }
+            })
+        }
+        val profile = PreviewProfile(name = "预览作者", avatarPhoto = photo)
+        val ready = AtomicBoolean()
+        val closed = AtomicBoolean()
+        val key = "editor-preview-" + UUID.randomUUID()
+        try {
+            app.setContent {
+                SoTheme {
+                    val session = rememberArticleEditorSession(key, profile = profile)
+                    ArticleEditorScreen({ closed.set(true) }, onReady = { ready.set(true) }, session = session)
+                }
+            }
+            app.waitUntil(20_000) { ready.get() }
+            app.waitForIdle()
+            assertEquals("true", eval("""
+                $('#more-button').click();
+                [...$('#overflow-menu').querySelectorAll('[role="menuitem"]')].map(item => item.textContent.trim()).join('|') ===
+                  '导出 Markdown|舍弃' && $('#overflow-menu').offsetWidth < 180
+            """.trimIndent()))
+            assertEquals("true", eval("""
+                closeMenu();
+                titleInput.value = '同一位置的标题';
+                editor.commands.setContent('<p><strong>' + '字 '.repeat(49) + '</strong></p>');
+                SemiNativeEditor.flush();
+                $('.send-button').click();
+                !state.preview && $('#body-count-value').textContent === '49 / 50' &&
+                  body.length > 50 && JSON.parse(localStorage.getItem(draftKey)).body === body &&
+                  $('#toast').textContent === '正文至少需要 50 个字'
+            """.trimIndent()))
+            assertEquals("true", eval("""
+                editor.commands.setContent('<p>' + '字'.repeat(50) + '</p>');
+                const titleTop = titleInput.getBoundingClientRect().top;
+                $('.send-button').click();
+                window.previewHasMotion = (node, property, duration) => {
+                  node.getBoundingClientRect();
+                  return reducePreviewMotion() || node.getAnimations().some(animation =>
+                    animation.transitionProperty === property && animation.effect.getTiming().duration === duration);
+                };
+                state.preview && !dialog.open && !$('#preview-label') && island.inert &&
+                  $('#preview-title').getBoundingClientRect().top === titleTop &&
+                  $('#toast').textContent === '进入预览' &&
+                  previewHasMotion(island, 'translate', 300) &&
+                  previewHasMotion($('#body-count'), 'opacity', 150)
+            """.trimIndent()))
+            app.waitUntil(5_000) {
+                eval("""
+                    getComputedStyle(island).visibility === 'hidden' &&
+                      !$('#preview-avatar-image').hidden && $('#preview-avatar-image').naturalWidth > 0 &&
+                      $('#preview-author-name').textContent === '预览作者' &&
+                      $('#preview-date').dateTime.length === 10 &&
+                      $('#preview-duration').textContent === '约 1 分钟' &&
+                      $('#preview-author').offsetTop >= $('#preview-title').offsetHeight
+                """.trimIndent()) == "true"
+            }
+            assertEquals("true", eval("""
+                SemiNativeEditor.back();
+                !state.preview && $('#preview').inert && !island.inert &&
+                  previewHasMotion(island, 'translate', 300) &&
+                  previewHasMotion($('#body-count'), 'opacity', 150)
+            """.trimIndent()))
+            app.waitUntil(5_000) {
+                eval("getComputedStyle($('#preview')).visibility === 'hidden' && getComputedStyle(titleInput).visibility === 'visible'") == "true"
+            }
+            assertFalse(closed.get())
+        } finally {
+            ProfileImages.delete(context, photo)
+        }
+    }
+
     @Test fun formattingSummaryCoverAndLocalDraftSurviveReload() {
         val ready = AtomicInteger()
         val closed = AtomicBoolean()
@@ -683,7 +762,7 @@ class ArticleEditorIntegrationTest {
         eval("""
             titleInput.value = '移动端编辑检查';
             titleInput.dispatchEvent(new Event('input', {bubbles:true}));
-            editor.commands.setContent('<p>这是一段超过二十个字的正文，用于确认编辑工具和草稿格式在应用中可以正常保留。</p>');
+            editor.commands.setContent('<p>' + '这是一段用于确认编辑工具和草稿格式在应用中可以正常保留的正文。'.repeat(2) + '</p>');
             editor.commands.selectAll();
             document.querySelector('#quick-tools [data-tool="bold"]').click();
             summaryInput.value = '摘要内容';
@@ -828,7 +907,7 @@ class ArticleEditorIntegrationTest {
             assertEquals("rgba(0, 0, 0, 0)", computed.getString("footer"))
             assertEquals(if (dark) "rgb(24, 42, 43)" else "rgb(255, 254, 249)", computed.getString("dialog"))
             assertEquals(computed.getString("text"), computed.getString("preview"))
-            assertEquals(if (dark) "#2cb38b" else "#158624", computed.getString("accent"))
+            assertEquals(if (dark) "#2cb38b" else "#118480", computed.getString("accent"))
             assertEquals(palette.name, computed.getString("scheme"))
             assertEquals("true", eval("titleInput.value === '主题适配' && summaryInput.value === '摘要内容' && editor.getHTML().includes('切换时保留')"))
             assertEquals("Theme changes must not reload the document", 1, ready.get())

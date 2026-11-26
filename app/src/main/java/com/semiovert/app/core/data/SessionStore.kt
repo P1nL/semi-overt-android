@@ -32,11 +32,13 @@ internal data class RefreshCookie(val header: String, val expiresAt: Long?) {
     }
 }
 
+internal data class StoredSession(val cookie: RefreshCookie, val owner: String?)
+
 internal class SessionStore(context: Context, filename: String) {
     private val file = AtomicFile(File(context.noBackupFilesDir, filename))
     private val alias = "semi-overt-device-session"
 
-    suspend fun read(): RefreshCookie? = withContext(Dispatchers.IO) {
+    suspend fun read(): StoredSession? = withContext(Dispatchers.IO) {
         try {
             val bytes = file.readFully()
             require(bytes.size > 12)
@@ -44,20 +46,21 @@ internal class SessionStore(context: Context, filename: String) {
             cipher.init(Cipher.DECRYPT_MODE, key(create = false), GCMParameterSpec(128, bytes.copyOfRange(0, 12)))
             val value = JSONObject(cipher.doFinal(bytes, 12, bytes.size - 12).toString(Charsets.UTF_8))
             RefreshCookie(value.getString("cookie"), value.getLong("expires")).takeIf { it.usable() }
+                ?.let { StoredSession(it, value.id("owner")) }
         } catch (_: Exception) {
             file.delete()
             null
         }
     }
 
-    suspend fun write(cookie: RefreshCookie?) = withContext(Dispatchers.IO) {
+    suspend fun write(cookie: RefreshCookie?, owner: String? = null) = withContext(Dispatchers.IO) {
         if (cookie?.expiresAt == null) {
             file.delete()
             return@withContext
         }
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, key(create = true))
-        val bytes = json("cookie" to cookie.header, "expires" to cookie.expiresAt).toString().toByteArray()
+        val bytes = json("cookie" to cookie.header, "expires" to cookie.expiresAt, "owner" to owner).bytes()
         val stream = file.startWrite()
         try {
             stream.write(cipher.iv)

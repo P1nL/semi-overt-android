@@ -78,6 +78,34 @@ class HomeDraftShortcutTest {
     @Test fun mousePullUsesResistanceBeforeDetaching() = pullWithoutDetaching(mouse = true)
     @Test fun touchPullUsesResistanceBeforeDetaching() = pullWithoutDetaching(mouse = false)
 
+    @Test fun draftDropsPinchOffAndRejoinOnlyWhileMoving() {
+        fixture()
+        val joinedShadow = app.onNodeWithTag("menu-droplet-shadow")
+        fun reachesJoinedFrame(): Boolean {
+            repeat(12) {
+                app.mainClock.advanceTimeByFrame()
+                if (app.onAllNodesWithTag("menu-droplet-shadow").fetchSemanticsNodes().isNotEmpty()) return true
+            }
+            return false
+        }
+        app.mainClock.autoAdvance = false
+        try {
+            app.onNodeWithTag("main-circle").performClick()
+            assertTrue("The drops should emerge from one liquid silhouette", reachesJoinedFrame())
+            app.mainClock.advanceTimeBy(1_100)
+            joinedShadow.assertDoesNotExist()
+            app.onNodeWithTag("draft-box").assertIsDisplayed()
+            app.onNodeWithTag("main-circle").performClick()
+            app.mainClock.advanceTimeBy(370)
+            assertTrue("The drops should reconnect just before being absorbed", reachesJoinedFrame())
+            app.mainClock.advanceTimeBy(300)
+            joinedShadow.assertDoesNotExist()
+            app.onNodeWithTag("draft-box").assertDoesNotExist()
+        } finally {
+            app.mainClock.autoAdvance = true
+        }
+    }
+
     @Test fun touchCreateDispatchesOnlyAfterBothCirclesCollapse() {
         val actions = mutableListOf<HomeDraftAction>()
         fixture(onDraftAction = { actions.add(it) })

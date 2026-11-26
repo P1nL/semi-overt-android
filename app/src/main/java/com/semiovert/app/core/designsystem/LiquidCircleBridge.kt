@@ -22,13 +22,14 @@ internal data class LiquidBridge(
     val smallB: Offset,val smallHandleB: Offset,val mainHandleB: Offset,val mainB: Offset,
 )
 
-internal data class LiquidShadowPart(val center: Offset,val radius: Float,val stretch: Float,val bridge: LiquidBridge?)
+internal data class LiquidShadowPart(val center: Offset,val radius: Float,val stretch: Float,val elasticStretch: Float,
+    val bridge: LiquidBridge?)
 
 /** One occluding silhouette: no internal circle rim is allowed to cast its own shadow. */
 internal fun liquidFusionOutline(main: Offset,mainRadius: Float,parts: List<LiquidShadowPart>): Path {
     var union=Path().apply {addOval(Rect(main,mainRadius))}
     for(part in parts) {
-        val outline=LiquidCircleShape(main-part.center,part.stretch).createOutline(
+        val outline=LiquidCircleShape(main-part.center,part.stretch,part.elasticStretch).createOutline(
             Size(part.radius*2f,part.radius*2f),LayoutDirection.Ltr,Density(1f))
         val small=Path().apply {addOutline(outline);translate(part.center-Offset(part.radius,part.radius))}
         union=Path.combine(PathOperation.Union,union,small)
@@ -40,6 +41,7 @@ internal fun liquidFusionOutline(main: Offset,mainRadius: Float,parts: List<Liqu
 /** Tangential metaball necks; both separation and reunion use the actual circle positions. */
 internal object LiquidCircleGeometry {
     fun facingRadius(radius: Float,stretch: Float)=radius*(1f+.8f*stretch.coerceIn(-.18f,1.1f))
+    fun sideRadius(radius: Float,elasticStretch: Float)=radius*(1f-.18f*elasticStretch.coerceIn(-.18f,1.1f))
     fun detachDistance(mainRadius: Float,smallRadius: Float)=mainRadius+smallRadius+min(mainRadius,smallRadius)*1.25f
 
     /** Keep a droplet the source's color until it has completely pinched off. */
@@ -82,16 +84,17 @@ internal object LiquidCircleGeometry {
     }
 }
 
-/** Keep the far edge and side diameter stable; only the main-facing side is pulled. */
-internal class LiquidCircleShape(private val towardMain: Offset,private val stretch: Float): Shape {
+internal class LiquidCircleShape(private val towardMain: Offset,private val stretch: Float,
+    private val elasticStretch: Float): Shape {
     override fun createOutline(size: Size,layoutDirection: LayoutDirection,density: Density): Outline {
-        if(abs(stretch)<.001f)return CircleShape.createOutline(size,layoutDirection,density)
+        if(abs(stretch)<.001f&&abs(elasticStretch)<.001f)return CircleShape.createOutline(size,layoutDirection,density)
         val radius=min(size.width,size.height)/2f
         val center=Offset(size.width/2f,size.height/2f)
         val direction=if(towardMain.getDistance()>.001f)towardMain/towardMain.getDistance() else Offset(1f,0f)
         val normal=Offset(-direction.y,direction.x)
         val front=LiquidCircleGeometry.facingRadius(radius,stretch)
-        val k=.55228475f
+        val side=LiquidCircleGeometry.sideRadius(radius,elasticStretch)
+        val handleRatio=.55228475f
         fun point(x: Float,y: Float)=center+direction*x+normal*y
         val path=Path()
         fun curve(ax: Float,ay: Float,bx: Float,by: Float,x: Float,y: Float) {
@@ -99,10 +102,10 @@ internal class LiquidCircleShape(private val towardMain: Offset,private val stre
             path.cubicTo(a.x,a.y,b.x,b.y,end.x,end.y)
         }
         val start=point(front,0f);path.moveTo(start.x,start.y)
-        curve(front,k*radius,k*front,radius,0f,radius)
-        curve(-k*radius,radius,-radius,k*radius,-radius,0f)
-        curve(-radius,-k*radius,-k*radius,-radius,0f,-radius)
-        curve(k*front,-radius,front,-k*radius,front,0f)
+        curve(front,handleRatio*side,handleRatio*front,side,0f,side)
+        curve(-handleRatio*radius,side,-radius,handleRatio*side,-radius,0f)
+        curve(-radius,-handleRatio*side,-handleRatio*radius,-side,0f,-side)
+        curve(handleRatio*front,-side,front,-handleRatio*side,front,0f)
         path.close()
         return Outline.Generic(path)
     }

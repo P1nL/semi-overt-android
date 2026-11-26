@@ -108,7 +108,7 @@ class WaveDeckMathTest {
     @Test fun sceneWindowsLimitRenderingWithoutDiscardingArticles() {
         assertEquals(6,WaveDeckMath.SEARCH_VISIBLE)
         assertEquals(7,WaveDeckMath.CATEGORY_VISIBLE)
-        assertEquals(5,WaveDeckMath.PROFILE_VISIBLE)
+        assertEquals(WaveDeckMath.CATEGORY_VISIBLE,WaveDeckMath.PROFILE_VISIBLE)
         for(limit in listOf(WaveDeckMath.SEARCH_VISIBLE,WaveDeckMath.CATEGORY_VISIBLE,WaveDeckMath.PROFILE_VISIBLE)) {
             val g=WaveDeckMath.embeddedGeometry(411f,750f,11,900f,visibleLimit=limit)
             for(page in -11..11) {
@@ -124,6 +124,13 @@ class WaveDeckMathTest {
             }
         }
         assertEquals(4,WaveDeckMath.frames(4,0f,WaveDeckMath.geometry(411f,900f,4),WaveDeckMath.PROFILE_VISIBLE).size)
+    }
+    @Test fun aSingleCardNeverCyclesOutOfView() {
+        val geometry=WaveDeckMath.embeddedGeometry(411f,750f,1,900f,visibleLimit=WaveDeckMath.CATEGORY_VISIBLE)
+        val resting=WaveDeckMath.frames(1,0f,geometry)
+        for(position in listOf(-1.5f,-.5f,.15f,.5f,.95f,2f)) {
+            assertEquals(resting,WaveDeckMath.frames(1,position,geometry))
+        }
     }
     @Test fun cappedRearReplacementArrivesWithoutFlashingOrAnExtraCard() {
         val g=WaveDeckMath.embeddedGeometry(411f,750f,11,900f,visibleLimit=4)

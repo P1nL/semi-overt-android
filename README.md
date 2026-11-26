@@ -61,8 +61,11 @@ Android Studio 可在 Build Variants 中选择 `preview` 后正常 Run（不是 
 配置环境 Secrets `ANDROID_KEYSTORE_B64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_PASSWORD`，
 以及环境 Variable `ANDROID_KEY_ALIAS`。沿用上一个正式 APK 的签名密钥。
 
-每次发包前修改 `app/build.gradle.kts` 的 `versionName` 并递增 `versionCode`。
-将要发布的代码和工作流推送到 `main` 后，为对应的提交创建标签；例如发布 `1.0.1`：
+发包时修改 `app/build.gradle.kts` 的 `versionName`，并将 `versionCode` 改为更大的整数，再随本版代码推送到 `main`。
+工作流比较推送前后的版本配置；仅在两个条件同时满足时，为推送的提交创建 `v<versionName>` 标签并触发打包。
+版本可跳号。常规代码提交或只改一个版本字段不会发包。
+
+仍然可以手动为 `main` 上版本匹配的提交推送标签；例如当前版本为 `1.0.1` 时：
 
 ~~~powershell
 git fetch origin
@@ -70,9 +73,9 @@ git tag -a v1.0.1 origin/main -m "Semi-Overt 1.0.1"
 git push origin v1.0.1
 ~~~
 
-[Android release draft](.github/workflows/android-release.yml) 运行单测、构建无签名 APK，再使用环境密钥签名和验签。
-成功后在 **Releases** 中下载草稿附件 `Semi-Overt-v1.0.1.apk` 进行真机验收，通过后在同一草稿点击 **Publish release**。
-同一标签已有 Release 时，工作流不会覆盖其附件。
+[Android release draft](.github/workflows/android-release.yml) 从版本标签运行单测、构建无签名 APK，再使用环境密钥签名和验签。
+成功后在 **Releases** 中下载草稿附件（如 `Semi-Overt-v1.0.1.apk`）进行真机验收，通过后在同一草稿点击 **Publish release**。
+工作流不会移动已有标签或覆盖已有 Release 附件。
 
 ## 源码
 

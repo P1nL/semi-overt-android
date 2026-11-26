@@ -9,10 +9,11 @@ internal object SoPalette {
     val CarrotOrange = Color(0xFFF8961E)
     val Tomato = Color(0xFFE96149)
     val BrightAmber = Color(0xFFFFCF10)
-    val ForestGreen = Color(0xFF158624)
+    val Olive = Color(0xFF6A7C20)
     val MintLeaf = Color(0xFF2CB38B)
     val Teal = Color(0xFF118480)
     val Amethyst = Color(0xFF9946A9)
+    val Plum = Color(0xFF653563)
     val FrenchBlue = Color(0xFF1F50D5)
 
     val LightSurface = Color(0xFFFFFDF3)

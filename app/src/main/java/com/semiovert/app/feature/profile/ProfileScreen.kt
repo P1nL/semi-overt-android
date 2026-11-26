@@ -28,19 +28,27 @@ import com.semiovert.app.feature.records.RecordSectionTitle
 import com.semiovert.app.feature.account.AccountForm
 import com.semiovert.app.navigation.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.launch
 
-private data class ProfileRequest(val info: PublicProfile?, val pages: PagedRequest<Article>, val next: () -> Unit)
+private data class ProfileRequest(val info: PublicProfile?, val articles: List<Article>, val total: Int,
+    val loading: Boolean, val error: String?, val hasNext: Boolean, val next: () -> Unit)
 
 @Composable
 private fun rememberProfileRequest(business: LiveBusiness, id: String, owner: Boolean): ProfileRequest {
-    val revision = if(owner) business.writes.collectAsStateWithLifecycle().value else 0
-    var info by remember(business, id, owner, revision) { mutableStateOf<PublicProfile?>(null) }
-    val (pages, next) = rememberPaged(business, id, owner, revision, id = Article::id) { page ->
-        val result = business.profile(id, page, owner)
+    if (owner) {
+        val state = rememberOwnProfile(business, id)
+        val available = state?.value
+        val scope = rememberCoroutineScope()
+        return ProfileRequest(available, available?.articles?.items.orEmpty(), available?.articles?.total ?: 0,
+            state?.loading != false, state?.error, false) { scope.launch { business.refreshOwnProfile(id) } }
+    }
+    var info by remember(business, id) { mutableStateOf<PublicProfile?>(null) }
+    val (pages, next) = rememberPaged(business, id, id = Article::id) { page ->
+        val result = business.profile(id, page, false)
         if(page==1)info=result
         result.articles
     }
-    return ProfileRequest(info, pages, next)
+    return ProfileRequest(info, pages.items, pages.total, pages.loading, pages.error, pages.hasNext, next)
 }
 
 private val profileHeaderHeight=64.dp
@@ -159,8 +167,9 @@ private fun ProfileSettingsButton(fade: Float,onClick: ()->Unit,cover: ProfilePh
 private fun ProfileFeed(profile: PreviewProfile,authorId: String,owner: Boolean,snapshots: Boolean,cleared: Boolean,onArticle: (String)->Unit,
     onEdit: ()->Unit={},progress: Float=1f,authorArrival: Int=0,list: LazyListState=rememberLazyListState(),
     coverImage: ImageBitmap?=rememberProfileCover(profile.coverPhoto,profile.cover),remote: ProfileRequest?=null) {
-    val articles=remote?.pages?.items ?: if(LocalBusiness.current==null)remember(authorId){SampleLibrary.articles.filter {it.author.id==authorId}}
+    val articles=remote?.articles ?: if(LocalBusiness.current==null)remember(authorId){SampleLibrary.articles.filter {it.author.id==authorId}}
         else emptyList()
+    val loading=remote?.loading==true&&remote.info==null
     var handledArrival by rememberSaveable(authorId) {mutableIntStateOf(0)}
     LaunchedEffect(authorArrival) {
         if(!owner&&authorArrival!=handledArrival) {
@@ -168,6 +177,7 @@ private fun ProfileFeed(profile: PreviewProfile,authorId: String,owner: Boolean,
         }
     }
     var selected by rememberSaveable(authorId){mutableIntStateOf(0)}
+    var focused by remember(authorId) {mutableIntStateOf(selected)}
     val articleList=rememberLazyListState()
     val motion=LocalMotionEnabled.current
     val expansion=LocalArticleExpansion.current
@@ -186,7 +196,7 @@ private fun ProfileFeed(profile: PreviewProfile,authorId: String,owner: Boolean,
                 Surface(color=MaterialTheme.colorScheme.secondaryContainer,
                     modifier=Modifier.fillMaxWidth().height(coverHeight).graphicsLayer {translationY=-size.height*(1f-coverPanel)}
                         .testTag("profile-cover")) {
-                    if(coverImage!=null)ProfileCoverImage(coverImage,Modifier.fillMaxSize().testTag("profile-cover-image"),profile.coverPosition)
+                    FadingProfileCover(coverImage,profile.coverPosition,Modifier.fillMaxSize(),"profile-cover-image")
                 }
                 // The avatar remains a stable shared-element endpoint while the cover moves.
                 // Its center and the cover's lower edge share the same layout coordinate.
@@ -209,11 +219,10 @@ private fun ProfileFeed(profile: PreviewProfile,authorId: String,owner: Boolean,
     }
     val records: @Composable ()->Unit = {
         Column(Modifier.padding(horizontal=20.dp).readingChromeFade()){
-            val error=remote?.pages?.error
-            if(remote!=null&&remote.info==null)RemoteState(error ?: "正在加载创作记录…",
-                action=error?.let {"重新加载"},onAction=remote.next)
-            else RecordCalendar(authorId,owner,snapshots,cleared,textProgress=segment(150f,500f),topPadding=0.dp,
-                calendar=remote?.info?.calendar)
+            val error=remote?.error
+            if(remote==null||remote.info!=null)RecordCalendar(authorId,owner,snapshots,cleared,
+                textProgress=segment(150f,500f),topPadding=0.dp,calendar=remote?.info?.calendar)
+            else if(error!=null)RemoteState(error,action="重试",onAction=remote.next)
         }
     }
     val heading: @Composable ()->Unit = {
@@ -222,8 +231,9 @@ private fun ProfileFeed(profile: PreviewProfile,authorId: String,owner: Boolean,
             .readingChromeFade(),verticalAlignment=Alignment.CenterVertically) {
             RecordSectionTitle("公开文章",Modifier.testTag("profile-articles-heading"))
             Spacer(Modifier.weight(1f))
-            val position=if(articles.isEmpty())0 else (if(motion&&density.fontScale<=1.2f)selected else articleList.firstVisibleItemIndex).coerceAtMost(articles.lastIndex)+1
-            RecordSectionNumber("$position / ${remote?.pages?.total ?: articles.size}",Modifier.padding(end=trailing).testTag("profile-position"))
+            val position=if(articles.isEmpty())0 else (if(motion&&density.fontScale<=1.2f)focused else articleList.firstVisibleItemIndex).coerceAtMost(articles.lastIndex)+1
+            if(!loading&&!(remote?.error!=null&&remote.info==null))RecordSectionNumber("$position / ${remote?.total ?: articles.size}",
+                Modifier.padding(end=trailing).testTag("profile-position"))
         }
     }
     BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -236,24 +246,28 @@ private fun ProfileFeed(profile: PreviewProfile,authorId: String,owner: Boolean,
             item("identity"){identity()}
             item("records"){records()}
             item("articles-heading"){heading()}
-            if(remote==null||remote.info!=null)item("articles-deck") {
-            Box(Modifier.fillMaxWidth().height(deckHeight).clipToBounds()) {
+            item("articles-deck") {
+            val deckSize=if(remote==null||remote.info!=null)Modifier.height(deckHeight) else Modifier
+            Box(Modifier.fillMaxWidth().then(deckSize).clipToBounds(),contentAlignment=Alignment.Center) {
             if(articles.isNotEmpty()) {
             val hidden=1f-progress
             CompositionLocalProvider(LocalFlowRoll provides hidden,LocalFlowPhase provides if(hidden>0f)if(exiting)FlowPhase.EXIT else FlowPhase.ENTER else FlowPhase.IDLE) {
                 if(motion&&density.fontScale<=1.2f)WaveArticleDeck(articles,selected.coerceIn(0,articles.lastIndex),{selected=it},onArticle,
                     Modifier.fillMaxSize(),listTag=if(owner)"profile-articles" else "author-articles",deckTag=if(owner)"profile-wave" else "author-wave",frontTop=76.dp,referenceHeight=referenceHeight,
                     visibleLimit=WaveDeckMath.PROFILE_VISIBLE,showCounter=false,
-                    sceneDurationMillis=if(exiting)SceneMotion.PROFILE_EXIT_MS else SceneMotion.PROFILE_ENTER_MS,sceneStaggerMillis=0,
+                    sceneDurationMillis=if(exiting)SceneMotion.PROFILE_EXIT_MS else SceneMotion.PROFILE_ENTER_MS,
+                    entranceEase=SceneMotion.categoryRouteEntranceEase,openWithLift=true,usePaletteCover=true,onFocused={focused=it},
                     consumePageDrag={delta -> -list.dispatchRawDelta(-delta)})
                 else ArticleFeed(articles,articleList,if(owner)"profile-articles" else "author-articles",onArticle,
-                    modifier=Modifier.fillMaxSize(),categoryCards=true)
+                    modifier=Modifier.fillMaxSize(),categoryCards=true,openWithLift=true,usePaletteCover=true)
             }
-            }else Text("暂时没有公开文章",Modifier.padding(24.dp),style=MaterialTheme.typography.bodyMedium)
+            }else if(!loading&&(remote==null||remote.info!=null))RemoteState("暂无公开文章")
+            ContentLoading(loading,"正在加载公开文章")
             }
             }
-            if(remote!=null&&articles.isNotEmpty()&&remote.pages.hasNext)item("more-profile-articles") {
-                MoreResults(remote.pages.loading,remote.pages.error,remote.next,Modifier.padding(horizontal=20.dp))
+            if(remote!=null&&remote.info!=null&&(remote.hasNext||remote.error!=null))item("more-profile-articles") {
+                MoreResults(remote.loading,remote.error,remote.next,Modifier.padding(horizontal=20.dp),
+                    loadingMessage="正在加载更多文章")
             }
         }
     }
@@ -265,21 +279,26 @@ fun AuthorScreen(authorId: String,onBack: ()->Unit,onArticle: (String)->Unit,onN
     if(business!=null) {
         val request=rememberProfileRequest(business,authorId,false)
         val info=request.info
-        if(info==null) {
-            PageFrame("作者主页",onBack,"author-unavailable") {
-                val error=request.pages.error
-                RemoteState(error ?: "正在加载作者主页…",action=error?.let {"重新加载"},onAction=request.next)
+        Box(Modifier.fillMaxSize()) {
+            if(info==null) {
+                PageFrame("作者主页",onBack,"author-unavailable",scroll=false) {
+                    request.error?.let {RemoteState(it,Modifier.fillMaxSize(),"重试",request.next)}
+                }
+            } else Box(Modifier.fillMaxSize().testTag("author-screen")) {
+                BrowseScene(Destination.PROFILE,"",onNavigate,showHeader=false) {
+                    ProfileFeed(info.account.profile,info.account.id,false,false,false,onArticle,
+                        progress=LocalProfileEntryProgress.current,authorArrival=avatarArrival,remote=request)
+                }
             }
-        } else Box(Modifier.fillMaxSize().testTag("author-screen")) {
-            BrowseScene(Destination.PROFILE,"",onNavigate,showHeader=false) {
-                ProfileFeed(info.account.profile,info.account.id,false,false,false,onArticle,
-                    progress=LocalProfileEntryProgress.current,authorArrival=avatarArrival,remote=request)
-            }
+            ContentLoading(info==null&&request.loading,"正在加载作者主页",Modifier.align(Alignment.Center))
         }
         return
     }
     val author=SampleLibrary.authors.find {it.id==authorId}
-    if(author==null){PageFrame("作者主页",onBack,"author-missing-screen"){Text("未找到作者")};return}
+    if(author==null){
+        PageFrame("作者主页",onBack,"author-missing-screen",scroll=false) {RemoteState("未找到作者",Modifier.fillMaxSize())}
+        return
+    }
     val cover=if(author.id=="zhou")Cover.ARCHITECTURE else null
     Box(Modifier.fillMaxSize().testTag("author-screen")) {
         BrowseScene(Destination.PROFILE,"",onNavigate,showHeader=false) {

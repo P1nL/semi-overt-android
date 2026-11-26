@@ -25,6 +25,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.semiovert.app.core.data.PreviewViewModel
 import com.semiovert.app.core.data.SampleLibrary
 import com.semiovert.app.core.data.LocalBusiness
+import com.semiovert.app.core.data.rememberRequest
 import com.semiovert.app.core.model.PreviewState
 import com.semiovert.app.core.model.ThemeMode
 import com.semiovert.app.core.designsystem.*
@@ -45,7 +46,6 @@ import com.semiovert.app.feature.reader.rememberArticleExpansionState
 import com.semiovert.app.feature.profile.*
 import com.semiovert.app.feature.account.*
 import com.semiovert.app.feature.settings.*
-import com.semiovert.app.feature.records.RecordsScreen
 import com.semiovert.app.feature.states.ContentStatesScreen
 import com.semiovert.app.feature.editor.ArticleEditorScreen
 import com.semiovert.app.feature.editor.rememberArticleEditorSession
@@ -86,7 +86,10 @@ private fun NavGraphBuilder.secondary(route: String,onBack: ()->Unit,canGoBack: 
 @Composable
 fun AppNavigation(state: PreviewState,model: PreviewViewModel,onStatusBarAppearance: (Boolean)->Unit) {
     val business = LocalBusiness.current
-    val account = business?.session?.collectAsStateWithLifecycle()?.value?.account
+    val session = business?.session?.collectAsStateWithLifecycle()?.value
+    val account = session?.account
+    val homeOwner = session?.takeIf { it.authenticated }?.account?.id
+    val homeRequest = rememberUpdatedState(business?.let { rememberRequest(it, homeOwner) { it.home() } })
     val controller=rememberNavController()
     val focus=LocalFocusManager.current
     val keyboard=LocalSoftwareKeyboardController.current
@@ -103,7 +106,8 @@ fun AppNavigation(state: PreviewState,model: PreviewViewModel,onStatusBarAppeara
     var navigating by remember {mutableStateOf(false)}
     var editorOpen by rememberSaveable(account?.id) {mutableStateOf(false)}
     val editorStorage=account?.id?.let { "$EDITOR_DRAFT_KEY:account:$it" } ?: EDITOR_DRAFT_KEY
-    val editorSession=rememberArticleEditorSession(editorStorage,business,account?.id)
+    val editorSession=rememberArticleEditorSession(editorStorage,business,account?.id,
+        account?.profile ?: state.profile.takeIf {business==null&&state.signedIn})
     val expansion=rememberArticleExpansionState()
     val draftBox=remember(account?.id) {DraftBoxState()}
     val mayWrite=business==null||account!=null
@@ -282,7 +286,7 @@ fun AppNavigation(state: PreviewState,model: PreviewViewModel,onStatusBarAppeara
             popEnterTransition={pageEnter(motion,pop=true,profileGuest=!state.signedIn)},popExitTransition={pageExit(motion,pop=true,profileGuest=!state.signedIn)}) {
             composable(Destination.HOME.route) {homeRoute ->AuthorAvatarTransitionScene(this,homeRoute.id) {SceneMotionContent(Destination.HOME,handoff) {RouteSurface(edgeToEdge=true) {
                 HomeScreen(navigate,read,onToggleTheme={model.theme(if(dark)ThemeMode.LIGHT else ThemeMode.DARK)},
-                    onEntranceComplete={homeEntered=true})
+                    remote=homeRequest.value,onEntranceComplete={homeEntered=true})
             }}}}
             composable(Destination.CATEGORY.route) {categoryRoute ->AuthorAvatarTransitionScene(this,categoryRoute.id) {
                 BackHandler(!navigating&&entry?.id==categoryRoute.id) {navigate(Destination.HOME)}
@@ -326,10 +330,11 @@ fun AppNavigation(state: PreviewState,model: PreviewViewModel,onStatusBarAppeara
                 if (business == null) EditProfileScreen(state.profile,back,{model.profile(it);back()})
                 else if (account != null) key(account.id) {
                     EditProfileScreen(state.profile, back, {}, persist = { business.saveProfile(account.id, state.profile, it); back() })
-                } else PageFrame("编辑资料", back, "edit-profile-unavailable") { Text("请登录后编辑资料") }
+                } else PageFrame("编辑资料", back, "edit-profile-unavailable", scroll=false) {
+                    RemoteState("请先登录",Modifier.fillMaxSize())
+                }
             }
             secondary(ScreenRoutes.NAV_POSITION,back,canSwipeBack,edgeToEdge=true) {NavigationPositionScreen(state.placement,back,{model.placement(it);back()})}
-            secondary(ScreenRoutes.RECORDS,back,canSwipeBack) {RecordsScreen(state,back)}
             secondary(ScreenRoutes.STATES,back,canSwipeBack) {ContentStatesScreen(back)}
         }
         BackHandler(navigating) {
@@ -349,7 +354,8 @@ fun AppNavigation(state: PreviewState,model: PreviewViewModel,onStatusBarAppeara
         DraftBoxBubble(draftBox,editorSession.drafts,editorSession.draftsLoading,editorSession.draftsFailed,
             onLoad={editorSession.loadDrafts(EditorPalette.forTheme(dark))},
             onOpenDraft={draft->editorSession.selectDraft(draft);focus.clearFocus();keyboard?.hide();editorOpen=true},
-            deletingKey=editorSession.deletingDraftKey,onDeleteDraft=editorSession::deleteDraft,message=editorSession.draftsMessage)
+            deletingKey=editorSession.deletingDraftKey,onDeleteDraft=editorSession::deleteDraft,message=editorSession.draftsMessage,
+            onRetry={editorSession.loadDrafts(EditorPalette.forTheme(dark),retry=true)})
         if(editorOpen&&mayWrite)ArticleEditorScreen(onBack={keyboard?.hide();focus.clearFocus();editorOpen=false},session=editorSession)
         }
         }

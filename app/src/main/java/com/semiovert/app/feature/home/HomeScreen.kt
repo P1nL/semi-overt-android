@@ -13,12 +13,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.layout.onGloballyPositioned
 import com.semiovert.app.core.data.SampleLibrary
-import com.semiovert.app.core.data.LocalBusiness
-import com.semiovert.app.core.data.rememberRequest
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.semiovert.app.core.data.RequestState
 import com.semiovert.app.core.designsystem.*
 import com.semiovert.app.core.designsystem.arc.ArcArticleDeck
 import com.semiovert.app.core.designsystem.arc.ArcDeckMath
+import com.semiovert.app.core.model.Article
 import com.semiovert.app.navigation.*
 
 private const val SHOW_HOME_CARDS = true
@@ -26,11 +25,9 @@ private const val SHOW_HOME_CARDS = true
 class HomeViewModel : ViewModel() { val articles get() = SampleLibrary.articles }
 
 @Composable
-fun HomeScreen(onNavigate: (Destination)->Unit,onArticle: (String)->Unit,model: HomeViewModel=viewModel(),
-    onToggleTheme: (() -> Unit)?=null,onEntranceComplete: ()->Unit={}) {
-    val business = LocalBusiness.current
-    val accountId = business?.session?.collectAsStateWithLifecycle()?.value?.account?.id
-    val remote = business?.let { rememberRequest(it, accountId) { it.home() } }
+internal fun HomeScreen(onNavigate: (Destination)->Unit,onArticle: (String)->Unit,model: HomeViewModel=viewModel(),
+    onToggleTheme: (() -> Unit)?=null,remote: Pair<RequestState<List<Article>>, ()->Unit>?=null,
+    onEntranceComplete: ()->Unit={}) {
     val articles = if (remote == null) model.articles else remote.first.value.orEmpty()
     var articleIndex by rememberSaveable {mutableIntStateOf(0)}
     var firstEntrancePlayed by rememberSaveable {mutableStateOf(false)}
@@ -68,15 +65,15 @@ fun HomeScreen(onNavigate: (Destination)->Unit,onArticle: (String)->Unit,model: 
                 val safeBottom=maxHeight.value-WindowInsets.safeDrawing.getBottom(density)/density.density-86f-140f*LocalNavigationPlacement.current.y
                 val geometry=ArcDeckMath.geometry(maxWidth.value,maxHeight.value)
                 if (remote?.first?.loading == true) {
-                    RemoteState("正在加载首页…", Modifier.align(Alignment.Center))
+                    RemoteState("首页加载中", Modifier.align(Alignment.Center))
                 } else if (remote?.first?.error != null) {
-                    RemoteState(remote.first.error!!, Modifier.align(Alignment.Center), "重新加载", remote.second)
-                } else if(motion&&density.fontScale<=1.2f&&maxHeight>maxWidth&&ArcDeckMath.canPull(geometry,safeTop,safeBottom)&&articles.isNotEmpty()) {
+                    RemoteState(remote.first.error!!, Modifier.align(Alignment.Center), "重试", remote.second)
+                } else if(motion&&density.fontScale<=1.2f&&maxHeight>maxWidth&&ArcDeckMath.canPull(geometry,safeTop,safeBottom)) {
                     // The 48dp theme button starts at safeTop; reserve a further 14dp avatar gap.
-                    ArcArticleDeck(articles,articleIndex.coerceIn(0,articles.lastIndex),{articleIndex=it},onArticle,safeTop,safeBottom,
+                    ArcArticleDeck(articles,articleIndex,{articleIndex=it},onArticle,safeTop,safeBottom,
                         expandedAvatarSafeTop=safeTop+48f+14f)
                 } else {
-                    val listState=rememberLazyListState(initialFirstVisibleItemIndex=articleIndex)
+                    val listState=rememberLazyListState(initialFirstVisibleItemIndex=articleIndex.coerceIn(0,articles.lastIndex.coerceAtLeast(0)))
                     CompositionLocalProvider(LocalMotionEnabled provides false) {
                         ArticleFeed(articles,listState,"feed-home",onArticle,topPadding=24)
                     }

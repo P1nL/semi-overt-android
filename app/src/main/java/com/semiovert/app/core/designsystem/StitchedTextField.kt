@@ -32,6 +32,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.filter
@@ -155,9 +156,11 @@ internal fun StitchedFieldFrame(
 @Composable
 internal fun StitchedFieldSupport(isError: Boolean,content: (@Composable ()->Unit)?) {
     if(content!=null) {
-        Box(Modifier.fillMaxWidth().padding(start=4.dp,top=6.dp,end=4.dp)) {
+        Box(Modifier.fillMaxWidth().padding(start=4.dp,top=6.dp,end=4.dp),
+            contentAlignment=if(isError)Alignment.Center else Alignment.TopStart) {
+            val style=MaterialTheme.typography.bodySmall
             CompositionLocalProvider(
-                LocalTextStyle provides MaterialTheme.typography.bodySmall,
+                LocalTextStyle provides if(isError)style.copy(textAlign=TextAlign.Center) else style,
                 LocalContentColor provides if(isError)MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
             ) {content()}
         }

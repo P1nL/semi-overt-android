@@ -16,6 +16,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
+import com.semiovert.app.core.designsystem.RemoteState
+import com.semiovert.app.core.designsystem.accentTextButtonColors
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import java.util.UUID
@@ -67,11 +69,10 @@ internal fun RegistrationChallenge(siteKey: String, onToken: (String) -> Unit, o
                         browser.destroy()
                     }, update = {})
                 } else {
-                    Text(if (supported) "验证暂未完成，请重试。" else "请更新 Android System WebView 后重试。",
-                        Modifier.padding(vertical = 16.dp), style = MaterialTheme.typography.bodyMedium)
-                    if (supported) TextButton(onClick = { attempt++ }) { Text("重试验证") }
+                    RemoteState(if (supported) "验证失败" else "请更新 Android System WebView",
+                        action = if (supported) "重试" else null, onAction = { attempt++ })
                 }
-                TextButton(onClick = onClose) { Text("取消") }
+                TextButton(onClick = onClose, colors = accentTextButtonColors()) { Text("取消") }
             }
         }
     }

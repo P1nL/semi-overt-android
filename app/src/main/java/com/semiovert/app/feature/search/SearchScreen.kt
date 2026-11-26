@@ -24,6 +24,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.*
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.input.ImeAction
@@ -75,8 +77,12 @@ fun SearchScreen(onNavigate: (Destination)->Unit,onArticle: (String)->Unit,onAut
     val changing by model.submitting.collectAsStateWithLifecycle()
     val scopeName by model.scope.collectAsStateWithLifecycle()
     val searchScope=SearchScope.valueOf(scopeName)
+    val scopeTransition=updateTransition(searchScope,label="search-scope")
+    val outgoingScope=scopeTransition.currentState
+    val switchingScope=outgoingScope!=searchScope
     val typography=MaterialTheme.typography
     val motion=LocalMotionEnabled.current
+    val returning=LocalArticleExpansion.current?.returning==true
     val routeRoll=LocalFlowRoll.current
     val routePhase=LocalFlowPhase.current
     val headerProgress=if(motion)SceneMotion.searchHeader(1f-routeRoll) else 1f
@@ -87,15 +93,21 @@ fun SearchScreen(onNavigate: (Destination)->Unit,onArticle: (String)->Unit,onAut
     val coroutine=rememberCoroutineScope()
     val keyboard=LocalSoftwareKeyboardController.current
     val business = LocalBusiness.current
-    val remoteArticles = if (business != null && committedQuery.isNotBlank() && searchScope == SearchScope.ARTICLES)
+    val remoteArticles = if (business != null && committedQuery.isNotBlank() &&
+        (searchScope==SearchScope.ARTICLES||outgoingScope==SearchScope.ARTICLES))
         rememberPaged(business, committedQuery, id = Article::id) { business.searchArticles(committedQuery, it) } else null
-    val remoteAuthors = if (business != null && committedQuery.isNotBlank() && searchScope == SearchScope.AUTHORS)
+    val remoteAuthors = if (business != null && committedQuery.isNotBlank() &&
+        (searchScope==SearchScope.AUTHORS||outgoingScope==SearchScope.AUTHORS))
         rememberPaged(business, committedQuery, id = Author::id) { business.searchAuthors(committedQuery, it) } else null
     val articles=if (business != null) remoteArticles?.first?.items.orEmpty() else
         remember(committedQuery) {if(committedQuery.isBlank())emptyList() else SampleLibrary.searchArticles(committedQuery)}
     var selectedArticle by rememberSaveable(committedQuery) {mutableIntStateOf(0)}
     val authors=if (business != null) remoteAuthors?.first?.items.orEmpty() else
         remember(committedQuery) {if(committedQuery.isBlank())emptyList() else SampleLibrary.searchAuthors(committedQuery)}
+    val request=if(searchScope==SearchScope.ARTICLES)remoteArticles?.first else remoteAuthors?.first
+    val ready=request?.items?.isNotEmpty()==true
+    val animateArrival=remember(request,ready) {!switchingScope}
+    val requestRoll by rememberResultsEntrance(request.takeIf {animateArrival},ready,SceneMotion.CATEGORY_SWAP_MS)
     val swapRoll=remember {Animatable(0f)}
     var swapPhase by remember {mutableStateOf(FlowPhase.IDLE)}
     var submission by remember {mutableStateOf<Job?>(null)}
@@ -113,12 +125,13 @@ fun SearchScreen(onNavigate: (Destination)->Unit,onArticle: (String)->Unit,onAut
                         swapRoll.animateTo(1f,tween(if(motion)SceneMotion.CATEGORY_SWAP_MS else 0,easing=LinearEasing))
                     } else swapRoll.snapTo(1f)
                     model.commit(requested)
-                    // Lay out the committed queue while hidden, then reuse the category entrance.
-                    swapPhase=FlowPhase.ENTER
-                    withFrameNanos {}
-                    val hasNewResults=business==null&&requested.isNotBlank()&&if(searchScope==SearchScope.ARTICLES)
-                        SampleLibrary.searchArticles(requested).isNotEmpty() else SampleLibrary.searchAuthors(requested).isNotEmpty()
-                    swapRoll.animateTo(0f,tween(if(motion&&hasNewResults)SceneMotion.CATEGORY_SWAP_MS else 0,easing=LinearEasing))
+                    if(business==null) {
+                        swapPhase=FlowPhase.ENTER
+                        withFrameNanos {}
+                        val hasNewResults=requested.isNotBlank()&&if(searchScope==SearchScope.ARTICLES)
+                            SampleLibrary.searchArticles(requested).isNotEmpty() else SampleLibrary.searchAuthors(requested).isNotEmpty()
+                        swapRoll.animateTo(0f,tween(if(motion&&hasNewResults)SceneMotion.CATEGORY_SWAP_MS else 0,easing=LinearEasing))
+                    }
                 } finally {swapPhase=FlowPhase.IDLE;model.finishSubmission()}
             }
         }
@@ -152,75 +165,97 @@ fun SearchScreen(onNavigate: (Destination)->Unit,onArticle: (String)->Unit,onAut
         val referenceHeight=maxHeight
         val useWave=motion&&LocalDensity.current.fontScale<=1.2f&&referenceHeight>=440.dp&&referenceHeight>maxWidth
         val resultMotion=Modifier.graphicsLayer {alpha=headerProgress;translationY=32f*density*(1f-headerProgress)}
-        val resultSwap=Modifier.graphicsLayer {
-            if(changing) {alpha=1f-swapRoll.value;translationY=32f*density*swapRoll.value}
-        }
         Column(Modifier.fillMaxSize().padding(top=WindowInsets.statusBars.asPaddingValues().calculateTopPadding()+DeckCounterLayout.SEARCH_HEADER_TOP.dp)) {
             Row(Modifier.fillMaxWidth().height(DeckCounterLayout.SEARCH_SCOPE_HEIGHT.dp).clipToBounds()
                 .padding(horizontal=20.dp).then(resultMotion).readingChromeFade(),verticalAlignment=Alignment.CenterVertically) {
                 SearchScope.entries.forEach { item ->
                     TextButton(onClick={model.selectScope(item)},enabled=!changing,modifier=Modifier.semantics {selected=searchScope==item}) {
                         Text(item.label,style=typography.labelLarge.withInterfaceTypeface(),color=if(searchScope==item) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant)
-                        if(item==SearchScope.AUTHORS)RollingAuthorCount(authors.size)
+                        if(item==SearchScope.AUTHORS)RollingAuthorCount(remoteAuthors?.first?.total ?: authors.size)
                     }
                 }
                 Spacer(Modifier.weight(1f))
             }
-            AnimatedContent(targetState=searchScope,modifier=Modifier.weight(1f),label="search-scope",transitionSpec={
+            Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().pointerInput(switchingScope) {
+                if(switchingScope)awaitPointerEventScope {
+                    while(true)awaitPointerEvent(PointerEventPass.Initial).changes.forEach {it.consume()}
+                }
+            }) {
+            scopeTransition.AnimatedContent(modifier=Modifier.fillMaxSize(),transitionSpec={
                 val direction=if(targetState==SearchScope.AUTHORS)1 else -1
                 (slideInHorizontally(tween(if(motion)300 else 0,easing=SoEase)) {it*direction} togetherWith slideOutHorizontally(tween(if(motion)300 else 0,easing=SoEase)) {-it*direction}).using(SizeTransform(clip=false))
             }) {visibleScope ->
-            CompositionLocalProvider(LocalFlowRoll provides if(changing&&routePhase==FlowPhase.IDLE)swapRoll.value else routeRoll,
-                LocalFlowPhase provides if(changing&&routePhase==FlowPhase.IDLE)swapPhase else routePhase) {
+            val localSwap=changing&&routePhase==FlowPhase.IDLE
+            val remoteEntry=motion&&!returning&&visibleScope==searchScope&&request?.items?.isNotEmpty()==true&&requestRoll>0f&&routePhase!=FlowPhase.EXIT
+            val roll=when {
+                localSwap->swapRoll.value
+                remoteEntry->maxOf(requestRoll,routeRoll)
+                else->routeRoll
+            }
+            val resultSwap=Modifier.graphicsLayer {
+                if(localSwap||remoteEntry) {alpha=1f-roll;translationY=32f*density*roll}
+            }
+            CompositionLocalProvider(LocalFlowRoll provides roll,
+                LocalFlowPhase provides when {
+                    localSwap->swapPhase
+                    remoteEntry||switchingScope&&routePhase==FlowPhase.IDLE->FlowPhase.ENTER
+                    else->routePhase
+                }) {
             if(visibleScope==SearchScope.ARTICLES) BoxWithConstraints(Modifier.fillMaxSize().clipToBounds()) {
-                DeckCounter(if(articles.isEmpty())0 else (if(useWave)selectedArticle else articleList.firstVisibleItemIndex)+1,
-                    articles.size,"search",compact=!useWave)
-                val request = remoteArticles?.first
-                val error = request?.error
-                if (articles.isEmpty() && (request?.loading == true || error != null)) {
-                    RemoteState(error ?: "正在搜索文章…", Modifier.align(Alignment.Center), error?.let { "重试" }, remoteArticles!!.second)
+                val articleRequest = remoteArticles?.first
+                val error = articleRequest?.error
+                val index=if(useWave)selectedArticle else articleList.firstVisibleItemIndex
+                DeckCounter(if(articles.isEmpty())0 else index.coerceAtMost(articles.lastIndex)+1,
+                    articleRequest?.total ?: articles.size,"search",compact=!useWave,
+                    loadingMessage="正在搜索文章".takeIf {articles.isEmpty()&&articleRequest?.loading==true})
+                if (articles.isEmpty() && error!=null) {
+                    RemoteState(error,Modifier.align(Alignment.Center),"重试",remoteArticles.second)
                 } else if(articles.isNotEmpty()&&useWave)
                     WaveArticleDeck(articles,selectedArticle,{selectedArticle=it},onArticle,listTag="feed-search",deckTag="search-wave",referenceHeight=referenceHeight,
                         visibleLimit=WaveDeckMath.SEARCH_VISIBLE,showCounter=false,
-                        entranceEase=if(changing)SceneMotion.searchSwapEntranceEase else SoSceneEase,
-                        sceneDurationMillis=if(changing)SceneMotion.CATEGORY_SWAP_MS else SceneMotion.SEARCH_ENTER_MS,
-                        sceneStaggerMillis=if(changing)SceneMotion.CATEGORY_SWAP_STAGGER_MS else SceneMotion.SEARCH_STAGGER_MS,
+                        entranceEase=if(localSwap||remoteEntry)SceneMotion.searchSwapEntranceEase else SoSceneEase,
+                        sceneDurationMillis=if(localSwap||remoteEntry)SceneMotion.CATEGORY_SWAP_MS else SceneMotion.SEARCH_ENTER_MS,
+                        sceneStaggerMillis=if(localSwap||remoteEntry)SceneMotion.CATEGORY_SWAP_STAGGER_MS else SceneMotion.SEARCH_STAGGER_MS,
                         frontTop=WaveDeckMath.restingFrontTop(maxWidth.value,maxHeight.value,referenceHeight.value).dp)
-                else if(committedQuery.isNotBlank())ArticleFeed(articles,articleList,"feed-search",onArticle,emptyMessage="没有找到相关文章",
-                    emptyHint="换个关键词，或切换到作者搜索。",modifier=Modifier.fillMaxSize().then(resultMotion).then(resultSwap),
+                else if(committedQuery.isNotBlank()&&articleRequest?.loading!=true)ArticleFeed(articles,articleList,"feed-search",onArticle,emptyMessage="未找到文章",
+                    modifier=Modifier.fillMaxSize().then(resultMotion).then(resultSwap),
                     categoryCards=true,displayEmptyCopy=true)
                 if (remoteArticles != null && articles.isNotEmpty() && remoteArticles.first.hasNext)
                     MoreResults(remoteArticles.first.loading, remoteArticles.first.error, remoteArticles.second,
                         Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 88.dp))
             }
-            else if (authors.isEmpty() && remoteAuthors != null && (remoteAuthors.first.loading || remoteAuthors.first.error != null)) {
-                val error = remoteAuthors.first.error
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    RemoteState(error ?: "正在搜索作者…", action = error?.let { "重试" }, onAction = remoteAuthors.second)
-                }
-            }
-            else if(authors.isEmpty()) Column(Modifier.fillMaxSize().padding(32.dp).then(resultMotion).then(resultSwap),verticalArrangement=Arrangement.Center) {
-                if(committedQuery.isNotBlank()) {
-                Text("没有找到相关作者",style=typography.titleMedium.withInterfaceTypeface())
-                Text(if (business == null) "试试搜索“林间”或“街角”。" else "试试输入完整账号或换个关键词。",
-                    style=typography.bodyMedium.withInterfaceTypeface(),modifier=Modifier.padding(top=8.dp))
-                }
-            }
-            else LazyColumn(state=authorList,modifier=Modifier.fillMaxSize().then(resultSwap).testTag("author-results"),contentPadding=PaddingValues(20.dp,20.dp,20.dp,128.dp),verticalArrangement=Arrangement.spacedBy(28.dp)) {
-                items(authors,key={it.id}) {author ->
-                    Row(Modifier.fillMaxWidth().sparkClickable(enabled=!changing,onClickLabel="查看作者主页") {onAuthor(author.id)}.testTag("author-"+author.id),verticalAlignment=Alignment.Top) {
-                        AuthorAvatar(author.id,modifier=if(authorAvatarInHandoff(author.id))Modifier else resultMotion)
-                        Column(Modifier.weight(1f).padding(start=16.dp).then(resultMotion)) {
-                            Text(author.name,style=typography.titleMedium.withInterfaceTypeface())
-                            Text(author.bio,style=typography.bodyMedium.withInterfaceTypeface(),modifier=Modifier.padding(top=6.dp),color=MaterialTheme.colorScheme.onSurfaceVariant)
-                            val secondary = if (business == null) "${SampleLibrary.articles.count {it.author.id==author.id}} 篇文章"
-                                else author.handle.takeIf { it.isNotBlank() }?.let { "@$it" }
-                            if (secondary != null) Text(secondary.withInterfaceDigits(),style=typography.labelMedium,modifier=Modifier.padding(top=8.dp),color=MaterialTheme.colorScheme.onSurfaceVariant)
+            else Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center) {
+                val authorRequest=remoteAuthors?.first
+                val waiting=authors.isEmpty()&&authorRequest?.loading==true
+                val error=authorRequest?.error
+                val stateMotion=resultMotion.then(resultSwap)
+                if(authors.isNotEmpty()) {
+                    LazyColumn(state=authorList,modifier=Modifier.fillMaxSize().then(resultSwap).testTag("author-results"),
+                        contentPadding=PaddingValues(20.dp,20.dp,20.dp,128.dp),
+                        verticalArrangement=Arrangement.spacedBy(28.dp)) {
+                        items(authors,key={it.id}) {author ->
+                            Row(Modifier.fillMaxWidth().sparkClickable(enabled=!changing,onClickLabel="查看作者主页") {onAuthor(author.id)}.testTag("author-"+author.id),verticalAlignment=Alignment.Top) {
+                                AuthorAvatar(author.id,modifier=if(authorAvatarInHandoff(author.id))Modifier else resultMotion)
+                                Column(Modifier.weight(1f).padding(start=16.dp).then(resultMotion)) {
+                                    Text(author.name,style=typography.titleMedium.withInterfaceTypeface())
+                                    Text(author.bio,style=typography.bodyMedium.withInterfaceTypeface(),modifier=Modifier.padding(top=6.dp),color=MaterialTheme.colorScheme.onSurfaceVariant)
+                                    val secondary = if (business == null) "${SampleLibrary.articles.count {it.author.id==author.id}} 篇文章"
+                                        else author.handle.takeIf { it.isNotBlank() }?.let { "@$it" }
+                                    if (secondary != null) Text(secondary.withInterfaceDigits(),style=typography.labelMedium,modifier=Modifier.padding(top=8.dp),color=MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                        if(authorRequest?.hasNext==true) item("more-authors") {
+                            MoreResults(authorRequest.loading,error,remoteAuthors.second,loadingMessage="正在加载更多作者")
                         }
                     }
+                } else if(error!=null) {
+                    RemoteState(error,stateMotion,"重试",remoteAuthors.second)
+                } else if(!waiting&&committedQuery.isNotBlank()) {
+                    EmptyContent("未找到作者",SoSymbol.PERSON,stateMotion,typography.titleMedium.withInterfaceTypeface())
                 }
-                if (remoteAuthors != null && remoteAuthors.first.hasNext)
-                    item("more-authors") { MoreResults(remoteAuthors.first.loading, remoteAuthors.first.error, remoteAuthors.second) }
+                ContentLoading(waiting,"正在搜索作者",resultMotion)
+            }
             }
             }
             }

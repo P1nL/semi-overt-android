@@ -75,7 +75,6 @@ fun AccountForm(onEnterDemo: (String?)->Unit,initialMode: AccountMode=AccountMod
     var sending by remember {mutableStateOf(false)}
     var challenge by remember {mutableStateOf(false)}
     var cooldown by remember {mutableIntStateOf(0)}
-    var rememberLogin by rememberSaveable {mutableStateOf(true)}
     var serverError by remember {mutableStateOf<String?>(null)}
     val motion=LocalMotionEnabled.current
     val scope=rememberCoroutineScope()
@@ -98,7 +97,7 @@ fun AccountForm(onEnterDemo: (String?)->Unit,initialMode: AccountMode=AccountMod
     }
     val confirmationError=if((register||recovery)&&secret!=confirmation)"两次密码不一致" else null
     val codeError=if(business!=null && (recovery || register)) {
-        if(!code.matches(Regex("[0-9]{6}"))) "请输入邮件中的 6 位验证码" else null
+        if(!code.matches(Regex("[0-9]{6}"))) "请输入 6 位验证码" else null
     } else if(recovery)when {
         !sent->"请先获取验证码"
         code!="123456"->"验证码有误"
@@ -128,7 +127,7 @@ fun AccountForm(onEnterDemo: (String?)->Unit,initialMode: AccountMode=AccountMod
                 business.requestCode(address, registration, token)
                 sent = true
                 cooldown = 60
-                notice = if(registration) "验证码已发送，请查看邮箱" else "若邮箱已注册，将收到验证码"
+                notice = if(registration) "验证码已发送" else "已注册邮箱将收到验证码"
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -146,11 +145,11 @@ fun AccountForm(onEnterDemo: (String?)->Unit,initialMode: AccountMode=AccountMod
 
     Column(Modifier.fillMaxWidth().testTag("login-screen").semantics {stateDescription=mode.action}) {
         if (session?.restoring == true) {
-            RemoteState("正在恢复登录…")
+            RemoteState("恢复登录中")
             return@Column
         }
         if (session?.error != null && session.account == null) {
-            RemoteState(session.error, action = "重试恢复", onAction = { scope.launch { business?.restore() } })
+            RemoteState(session.error, action = "重试", onAction = { scope.launch { business?.restore() } })
         }
         AccountField(if(business==null||register||recovery)"邮箱" else "账号或邮箱",email,{
             if(!sending&&!submitting) { email=it;sent=false;code="";emailAttempted=false;notice="";serverError=null }
@@ -180,7 +179,7 @@ fun AccountForm(onEnterDemo: (String?)->Unit,initialMode: AccountMode=AccountMod
                             else if(register&&business.challengeSiteKey.isNotBlank())challenge=true
                             else sendCode(null)
                         }
-                    },enabled=!submitting&&!sending&&cooldown==0,modifier=Modifier.testTag("account-send-code")) {
+                    },enabled=!submitting&&!sending&&cooldown==0,colors=accentTextButtonColors(),modifier=Modifier.testTag("account-send-code")) {
                         ScrambleText(when {sending->"发送中";cooldown>0->"${cooldown}s";sent->"重新获取";else->"获取验证码"},
                             style=MaterialTheme.typography.labelSmall)
                     }
@@ -193,10 +192,6 @@ fun AccountForm(onEnterDemo: (String?)->Unit,initialMode: AccountMode=AccountMod
             error=if(attempted)secretError else null,confirmationError=if(attempted)confirmationError else null,
             tag="account-password",confirmationTag="account-confirmation",
             showConfirmation=mode!=AccountMode.LOGIN)
-        if(business!=null&&mode==AccountMode.LOGIN) Row(verticalAlignment=Alignment.CenterVertically) {
-            Checkbox(checked=rememberLogin,onCheckedChange={rememberLogin=it},enabled=!submitting)
-            Text("保持登录",style=MaterialTheme.typography.bodyMedium)
-        }
         if(mode==AccountMode.LOGIN)Row(Modifier.fillMaxWidth().height(36.dp),horizontalArrangement=Arrangement.End,
             verticalAlignment=Alignment.CenterVertically) {
             TextButton(onClick={changeMode(AccountMode.RECOVERY)},
@@ -217,19 +212,23 @@ fun AccountForm(onEnterDemo: (String?)->Unit,initialMode: AccountMode=AccountMod
                     try {
                         if(business==null) snapshotFlow {submitTransition.currentState&&!submitTransition.isRunning}.first {it}
                         else when(submittedMode) {
-                            AccountMode.LOGIN -> business.signIn(email,secret,rememberLogin)
+                            AccountMode.LOGIN -> business.signIn(email,secret,remember=true)
                             AccountMode.REGISTER -> business.register(name,email,secret,code)
                             AccountMode.RECOVERY -> business.reset(email,code,secret)
                         }
-                        focus.clearFocus()
-                        secret="";confirmation="";code=""
-                        if(submittedMode==AccountMode.RECOVERY) {
-                            mode=AccountMode.LOGIN;sent=false;attempted=false;emailAttempted=false
-                            notice="设置完成，请登录"
-                        } else onEnterDemo(if(business==null)submittedName else null)
                     } catch(error: CancellationException) { throw error }
-                    catch(error: Exception) { serverError=error.userMessage() }
+                    catch(error: Exception) {
+                        serverError=error.userMessage()
+                        return@launch
+                    }
                     finally { submitting=false }
+                    attempted=false;emailAttempted=false
+                    focus.clearFocus()
+                    secret="";confirmation="";code=""
+                    if(submittedMode==AccountMode.RECOVERY) {
+                        mode=AccountMode.LOGIN;sent=false
+                        notice="密码已重置，请登录"
+                    } else onEnterDemo(if(business==null)submittedName else null)
                 }
             }
         },enabled=!submitting&&!sending,colors=ButtonDefaults.buttonColors(
@@ -245,20 +244,19 @@ fun AccountForm(onEnterDemo: (String?)->Unit,initialMode: AccountMode=AccountMod
                 else ScrambleText(mode.action)
             }
         }
-        serverError?.let { Text(it, Modifier.padding(top=12.dp).testTag("account-error"), color=MaterialTheme.colorScheme.error,
-            style=MaterialTheme.typography.bodyMedium) }
+        serverError?.let { StatusText(it, Modifier.padding(top=12.dp).testTag("account-error"), color=MaterialTheme.colorScheme.error) }
         AnimatedVisibility(notice.isNotEmpty(),
             enter=expandVertically(tween(if(motion)280 else 0),clip=false)+fadeIn(tween(transitionDuration)),
             exit=shrinkVertically(tween(transitionDuration),clip=false)+fadeOut(tween(transitionDuration))) {
-            Box(Modifier.padding(top=12.dp).semantics {stateDescription=notice}) {
+            Box(Modifier.fillMaxWidth().padding(top=12.dp).semantics {stateDescription=notice},contentAlignment=Alignment.Center) {
                 ScrambleText(notice,style=MaterialTheme.typography.bodySmall,
-                    color=MaterialTheme.colorScheme.primary,animateOnEnter=true)
+                    color=MaterialTheme.colorScheme.accentInk,animateOnEnter=true)
             }
         }
         Row(Modifier.fillMaxWidth().padding(top=4.dp),
             horizontalArrangement=Arrangement.spacedBy(12.dp,Alignment.CenterHorizontally),
             verticalAlignment=Alignment.CenterVertically) {
-            TextButton(onClick={changeMode(if(register)AccountMode.LOGIN else AccountMode.REGISTER)},enabled=!submitting,
+            TextButton(onClick={changeMode(if(register)AccountMode.LOGIN else AccountMode.REGISTER)},enabled=!submitting,colors=accentTextButtonColors(),
                 modifier=(if(recovery)Modifier else Modifier.fillMaxWidth()).testTag("account-register-toggle")) {
                 ScrambleText(when(mode) {
                     AccountMode.LOGIN->"没有账号？注册"
@@ -266,7 +264,7 @@ fun AccountForm(onEnterDemo: (String?)->Unit,initialMode: AccountMode=AccountMod
                     AccountMode.RECOVERY->"注册"
                 })
             }
-            if(recovery)TextButton(onClick={changeMode(AccountMode.LOGIN)},enabled=!submitting,
+            if(recovery)TextButton(onClick={changeMode(AccountMode.LOGIN)},enabled=!submitting,colors=accentTextButtonColors(),
                 modifier=Modifier.testTag("account-login-toggle")) {
                 ScrambleText("登录")
             }

@@ -1,20 +1,17 @@
 package com.semiovert.app.feature.profile
 
+import android.content.ActivityNotFoundException
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
@@ -25,6 +22,8 @@ import com.semiovert.app.core.model.*
 import com.semiovert.app.navigation.SwipeBackPage
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
+
+private enum class AvatarPickerStep { IDLE, CONFIRMED, CHOOSING }
 
 @Composable
 fun EditProfileScreen(initial: PreviewProfile,onBack: ()->Unit,onSave: (PreviewProfile)->Unit,
@@ -39,6 +38,8 @@ fun EditProfileScreen(initial: PreviewProfile,onBack: ()->Unit,onSave: (PreviewP
     var coverName by rememberSaveable {mutableStateOf(initial.cover?.name?:"none")}
     var coverPosition by rememberSaveable {mutableFloatStateOf(initial.coverPosition)}
     var cropSource by rememberSaveable {mutableStateOf<String?>(null)}
+    var avatarStep by rememberSaveable {mutableStateOf(AvatarPickerStep.IDLE)}
+    var importingAvatar by remember {mutableStateOf(false)}
     var busy by remember {mutableStateOf(false)}
     var imageError by remember {mutableStateOf(false)}
     var cropError by remember {mutableStateOf(false)}
@@ -53,17 +54,11 @@ fun EditProfileScreen(initial: PreviewProfile,onBack: ()->Unit,onSave: (PreviewP
     val draft=initial.copy(name=name.trim(),handle=handle.trim(),bio=bio.trim(),cover=cover,
         avatarPhoto=avatarPhoto,coverPhoto=coverPhoto,coverPosition=coverPosition)
     val dirty=draft!=initial
+    val replacingAvatar=avatarStep!=AvatarPickerStep.IDLE||importingAvatar||cropSource!=null
+    val canPick=!busy&&!replacingAvatar
     val avatar=rememberProfilePhoto(avatarPhoto).bitmap
     val banner=rememberProfileCover(coverPhoto,cover)
     val source=rememberProfilePhoto(cropSource)
-    val motion=LocalMotionEnabled.current
-    val avatarScale=remember {Animatable(1f)}
-    LaunchedEffect(avatar,avatarPhoto,motion) {
-        if(avatar!=null&&avatarPhoto!=initial.avatarPhoto&&motion) {
-            avatarScale.snapTo(.86f)
-            avatarScale.animateTo(1f,spring(dampingRatio=.72f,stiffness=600f))
-        }else avatarScale.snapTo(1f)
-    }
 
     fun deleteDraft(photo: String?, kept: String?) {
         if(photo!=kept)ProfileImages.delete(context,photo)
@@ -76,11 +71,12 @@ fun EditProfileScreen(initial: PreviewProfile,onBack: ()->Unit,onSave: (PreviewP
     val back: ()->Unit={
         if(!busy)when {
             cropSource!=null->closeCrop()
+            avatarStep!=AvatarPickerStep.IDLE->avatarStep=AvatarPickerStep.IDLE
             dirty->discard=true
             else->onBack()
         }
     }
-    fun importPhoto(uri: Uri?,applyPhoto: (String)->Unit) {
+    fun importPhoto(uri: Uri?,onFinished: ()->Unit={},applyPhoto: (String)->Unit) {
         if(uri==null)return
         busy=true
         imageError=false
@@ -88,11 +84,15 @@ fun EditProfileScreen(initial: PreviewProfile,onBack: ()->Unit,onSave: (PreviewP
             try {
                 val photo=ProfileImages.importPhoto(context,uri)
                 if(photo==null)imageError=true else applyPhoto(photo)
-            } finally {busy=false}
+            } finally {busy=false;onFinished()}
         }
     }
     val avatarPicker=rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) {uri->
-        importPhoto(uri) {photo->closeCrop();cropSource=photo}
+        avatarStep=AvatarPickerStep.IDLE
+        if(uri!=null) {
+            importingAvatar=true
+            importPhoto(uri,onFinished={importingAvatar=false}) {photo->cropSource=photo}
+        }
     }
     val coverPicker=rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) {uri->
         importPhoto(uri) {photo->
@@ -103,19 +103,21 @@ fun EditProfileScreen(initial: PreviewProfile,onBack: ()->Unit,onSave: (PreviewP
         }
     }
     val selectImage=PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-    val canPick=!busy&&cropSource==null
     LaunchedEffect(cropSource,source) {
         if(cropSource!=null&&source.loaded&&source.bitmap==null) {closeCrop();imageError=true}
     }
-    BackHandler(dirty||busy||cropSource!=null) {back()}
+    BackHandler(dirty||busy||replacingAvatar) {back()}
     SwipeBackPage(canPick,back) {
     PageFrame("编辑资料",back,"edit-profile-screen") {
-        Row(Modifier.fillMaxWidth().padding(top=8.dp),horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=Alignment.CenterVertically) {
-            Box(Modifier.graphicsLayer {scaleX=avatarScale.value;scaleY=avatarScale.value}.testTag("edit-avatar-preview")) {
-                ProfileAvatar(initial.avatar,size=72,photo=avatar)
+        AvatarChangeSlider(initial.avatar,avatar,canPick,replacingAvatar,onSlide={
+            if(canPick) {imageError=false;avatarStep=AvatarPickerStep.CONFIRMED}
+        },onCollapsed={
+            if(avatarStep==AvatarPickerStep.CONFIRMED) {
+                avatarStep=AvatarPickerStep.CHOOSING
+                try {avatarPicker.launch(selectImage)}
+                catch(_: ActivityNotFoundException) {avatarStep=AvatarPickerStep.IDLE;imageError=true}
             }
-            TextButton(onClick={avatarPicker.launch(selectImage)},enabled=canPick) {Text("更换头像")}
-        }
+        })
         ProfileCoverFrame(banner,hasCover=coverPhoto!=null||cover!=null,position=coverPosition,enabled=canPick,
             onPick={coverPicker.launch(selectImage)},onMove={delta->
                 val next=(coverPosition+delta).coerceIn(0f,1f)
@@ -127,7 +129,7 @@ fun EditProfileScreen(initial: PreviewProfile,onBack: ()->Unit,onSave: (PreviewP
                 coverPosition=.5f
             })
         if(busy||cropSource!=null&&!source.loaded)LinearProgressIndicator(Modifier.fillMaxWidth())
-        if(imageError)Text("无法读取图片",color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
+        if(imageError)StatusText("无法读取图片",color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
         StitchedTextField(name,{if(!busy)name=it},label={Text("昵称")},singleLine=true,isError=attempted&&nameError!=null,
             supportingText=if(attempted&&nameError!=null){{Text(nameError.withInterfaceDigits())}} else null,modifier=Modifier.fillMaxWidth().padding(top=24.dp).testTag("edit-name"))
         if (persist == null) StitchedTextField(handle,{handle=it},label={Text("账号")},singleLine=true,isError=attempted&&handleError!=null,
@@ -137,7 +139,7 @@ fun EditProfileScreen(initial: PreviewProfile,onBack: ()->Unit,onSave: (PreviewP
         StitchedTextField(bio,{if(!busy)bio=it},label={Text("简介")},isError=bio.length>bioLimit,
             supportingText={Text(("${bio.length} / $bioLimit").withInterfaceDigits())},
             minLines=3,modifier=Modifier.fillMaxWidth().padding(top=12.dp).testTag("edit-bio"))
-        saveError?.let { Text(it, Modifier.padding(top=12.dp).testTag("profile-save-error"), color=MaterialTheme.colorScheme.error) }
+        saveError?.let { StatusText(it, Modifier.padding(top=12.dp).testTag("profile-save-error"), color=MaterialTheme.colorScheme.error) }
         Button(onClick={
             attempted=true
             if(nameError==null&&handleError==null&&bio.length<=bioLimit) {

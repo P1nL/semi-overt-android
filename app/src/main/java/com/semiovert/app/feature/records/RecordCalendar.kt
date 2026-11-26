@@ -12,25 +12,40 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.*
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.*
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.*
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.toSize
 import com.semiovert.app.core.data.*
 import com.semiovert.app.core.designsystem.*
-import com.semiovert.app.core.model.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.time.*
+
+private val recordDayColors=listOf(Color(0xFFBF0FFF),Color(0xFFCBFF49),Color(0xFF12BFBF))
+
+private fun recordDayTier(words: Int): Int = when {
+    words<=0->0
+    words<300->1
+    words<800->2
+    else->3
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -51,22 +66,16 @@ fun RecordCalendar(authorId: String,owner: Boolean,snapshots: Boolean,cleared: B
     val revisions=if(business!=null)changes else records.mapNotNull { record ->
         SampleLibrary.article(record.articleId)?.let { LocalRevision(record.articleId,it.title,record.date,record.before,record.after) }
     }
+    val dailyWords=remember(calendar,records) {calendar ?: records.groupingBy {it.date}.fold(0) {count,record->count+record.summaryWords}}
     val motion=LocalMotionEnabled.current
     val duration=motionMillis(SceneMotion.DRAWER_MS)
     val typography=MaterialTheme.typography
     val weekdayStyle=typography.bodyMedium
     val dayStyle=typography.bodyLarge.copy(fontSize=22.sp)
     val arrow by animateFloatAsState(if(expanded)180f else 0f,tween(duration,easing=SoSceneEase),label="calendar-arrow")
-    val dateBounds=remember {mutableStateMapOf<Int,Rect>()}
-    var gridOrigin by remember {mutableStateOf(Offset.Zero)}
-    var highlightTarget by remember {mutableStateOf(Rect.Zero)}
     var displayedDate by remember {mutableStateOf(if(selectedDay>0)month.atDay(selectedDay) else null)}
-    val highlightAlpha by animateFloatAsState(if(selectedDay>0)1f else 0f,tween(duration,easing=SoSceneEase),label="date-highlight-alpha")
     LaunchedEffect(selectedDay,month) {
         if(selectedDay>0)displayedDate=month.atDay(selectedDay)
-    }
-    LaunchedEffect(selectedDay,dateBounds[selectedDay],gridOrigin) {
-        if(selectedDay>0)dateBounds[selectedDay]?.let {highlightTarget=it.translate(-gridOrigin)}
     }
     Row(Modifier.fillMaxWidth().padding(top=topPadding,bottom=12.dp).drawWithContent {clipRect(right=size.width*textProgress.coerceIn(0f,1f)){this@drawWithContent.drawContent()}},verticalAlignment=Alignment.CenterVertically) {
         val expandSpark=rememberSparkControl();val monthSpark=rememberSparkControl()
@@ -83,39 +92,15 @@ fun RecordCalendar(authorId: String,owner: Boolean,snapshots: Boolean,cleared: B
         modifier=Modifier.testTag("record-calendar-grid"),
         enter=expandVertically(tween(duration,easing=SoSceneEase),expandFrom=Alignment.Top)+fadeIn(tween(duration)),
         exit=shrinkVertically(tween(duration,easing=SoSceneEase),shrinkTowards=Alignment.Top)+fadeOut(tween(duration))) {
-    Column {
-        Row(Modifier.fillMaxWidth()) {listOf("一","二","三","四","五","六","日").forEach {Text(it,modifier=Modifier.weight(1f).padding(vertical=10.dp),textAlign=androidx.compose.ui.text.style.TextAlign.Center,style=weekdayStyle,fontWeight=FontWeight.SemiBold,color=MaterialTheme.colorScheme.onSurfaceVariant)}}
-        val start=month.atDay(1).dayOfWeek.value-1
-        Box(Modifier.fillMaxWidth().onGloballyPositioned {gridOrigin=it.positionInRoot()}) {
-        if(highlightTarget!=Rect.Zero) {
-            val highlight by animateRectAsState(highlightTarget,if(motion)spring(dampingRatio=.78f,stiffness=150f) else snap(),label="date-highlight-position")
-            val color=MaterialTheme.colorScheme.primaryContainer
-            Canvas(Modifier.matchParentSize().testTag("record-selection")) {
-                drawRoundRect(color.copy(alpha=highlightAlpha),highlight.topLeft,highlight.size,CornerRadius(highlight.height/2f))
-            }
-        }
         Column {
-        for(week in 0 until (start+month.lengthOfMonth()+6)/7) {
             Row(Modifier.fillMaxWidth()) {
-                for(column in 0..6) {
-                    val day=week*7+column-start+1
-                    if(day !in 1..month.lengthOfMonth()) Spacer(Modifier.weight(1f).height(48.dp))
-                    else {
-                        val dayDate=month.atDay(day)
-                        val hasRecords=calendar?.containsKey(dayDate)==true||revisions.any {it.date==dayDate}
-                        Box(Modifier.weight(1f).height(48.dp)
-                            .clickable(remember {MutableInteractionSource()},indication=if(LocalSparkFeedbackEnabled.current)LocalIndication.current else null) {selectedDay=if(selectedDay==day)0 else day}.semantics {contentDescription=month.year.toString()+"年"+month.monthValue+"月"+day+"日";selected=day==selectedDay}
-                            .onGloballyPositioned {dateBounds[day]=it.boundsInRoot()}.testTag("record-day-"+day),contentAlignment=Alignment.Center) {
-                            Text(day.toString().withEmphasizedInterfaceDigits(),style=dayStyle,color=MaterialTheme.colorScheme.onSurface)
-                            if(hasRecords) Box(Modifier.align(Alignment.BottomCenter).padding(bottom=5.dp).size(4.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary))
-                        }
-                    }
+                listOf("一","二","三","四","五","六","日").forEach {
+                    Text(it,Modifier.weight(1f).padding(vertical=10.dp),textAlign=TextAlign.Center,
+                        style=weekdayStyle,fontWeight=FontWeight.SemiBold,color=MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
+            RecordDateGrid(month,dailyWords,selectedDay,dayStyle) {day->selectedDay=if(selectedDay==day)0 else day}
         }
-        }
-        }
-    }
     }
     val detailDate=if(selectedDay>0)month.atDay(selectedDay) else displayedDate
     AnimatedVisibility(expanded&&selectedDay>0,enter=expandVertically(tween(duration,easing=SoSceneEase),expandFrom=Alignment.Top)+fadeIn(tween(duration)),
@@ -129,7 +114,7 @@ fun RecordCalendar(authorId: String,owner: Boolean,snapshots: Boolean,cleared: B
                 },label="record-date-content") {date ->
                 if(date!=null)Column(Modifier.fillMaxWidth().padding(16.dp).testTag("record-content-"+date.dayOfMonth)) {
                     val selectedRecords=revisions.filter {it.date==date}
-                    val wordCount=calendar?.get(date) ?: records.filter {it.date==date}.sumOf {it.summaryWords}
+                    val wordCount=dailyWords[date] ?: 0
                     Row(verticalAlignment=Alignment.CenterVertically) {
                         Text("${date.monthValue}月${date.dayOfMonth}日·${wordCount}字".withEmphasizedInterfaceDigits(26.sp),style=typography.titleLarge,
                             fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f))
@@ -168,9 +153,67 @@ fun RecordCalendar(authorId: String,owner: Boolean,snapshots: Boolean,cleared: B
             )
             DiffExcerpt(
                 label="新增 +${record.added}",text=record.after,accent=colors.primary,
-                background=colors.primaryContainer,foreground=colors.onPrimaryContainer,
+                background=colors.primaryContainer,foreground=colors.onPrimaryContainer,labelColor=colors.accentInk,
                 modifier=Modifier.testTag("diff-added-quote"),
             )
+        }
+    }
+}
+
+@Composable
+private fun RecordDateGrid(month: YearMonth,dailyWords: Map<LocalDate,Int>,selectedDay: Int,style: TextStyle,onSelect: (Int)->Unit) {
+    val weeks=remember(month,dailyWords) {
+        val first=month.atDay(1).dayOfWeek.value-1
+        val days=month.lengthOfMonth()
+        List((first+days+6)/7) {week ->
+            List(7) {column ->
+                val day=(week*7+column-first+1).takeIf {it in 1..days}
+                day to recordDayTier(day?.let {dailyWords[month.atDay(it)]} ?: 0)
+            }
+        }
+    }
+    val colors=MaterialTheme.colorScheme
+    val fills=remember(colors.surface,colors.surfaceVariant,colors.onSurface) {
+        listOf(colors.surfaceVariant)+recordDayColors.map {color ->
+            if(colors.onSurface.luminance()>.5f)color.copy(alpha=.42f).compositeOver(colors.surface) else color
+        }
+    }
+    val shape=RoundedCornerShape(10.dp)
+    val motion=LocalMotionEnabled.current
+    val highlightAlpha by animateFloatAsState(if(selectedDay>0)1f else 0f,tween(motionMillis(SceneMotion.DRAWER_MS),easing=SoSceneEase),
+        label="date-highlight-alpha")
+    val dateBounds=remember(month) {mutableStateMapOf<Int,Rect>()}
+    var gridOrigin by remember {mutableStateOf(Offset.Zero)}
+    var highlightTarget by remember {mutableStateOf(Rect.Zero)}
+    LaunchedEffect(selectedDay,dateBounds[selectedDay],gridOrigin) {
+        if(selectedDay>0)dateBounds[selectedDay]?.let {highlightTarget=it.translate(-gridOrigin)}
+    }
+    fun weight(tier: Int)=1f+tier*.16f
+    Box(Modifier.fillMaxWidth().height(336.dp).clipToBounds().onGloballyPositioned {gridOrigin=it.positionInRoot()}) {
+        Column(Modifier.fillMaxSize()) {
+            weeks.forEach {week->
+                Row(Modifier.fillMaxWidth().weight(week.sumOf {weight(it.second).toDouble()}.toFloat())) {
+                    week.forEach { (day,tier)->
+                        val cell=Modifier.weight(weight(tier)).fillMaxHeight().padding(2.dp)
+                        if(day==null) Spacer(cell)
+                        else Box(cell.clip(shape).background(fills[tier])
+                            .clickable(remember {MutableInteractionSource()},indication=if(LocalSparkFeedbackEnabled.current)LocalIndication.current else null) {onSelect(day)}
+                            .semantics {contentDescription="${month.year}年${month.monthValue}月${day}日";selected=day==selectedDay}
+                            .onGloballyPositioned {dateBounds[day]=Rect(it.positionInRoot(),it.size.toSize())}
+                            .testTag("record-day-$day"),contentAlignment=Alignment.Center) {
+                            Text(day.toString().withEmphasizedInterfaceDigits(),style=style,color=colors.onSurface,softWrap=false,maxLines=1)
+                        }
+                    }
+                }
+            }
+        }
+        if(highlightTarget!=Rect.Zero) {
+            val highlight by animateRectAsState(highlightTarget,if(motion)spring(dampingRatio=.78f,stiffness=150f) else snap(),label="date-highlight-position")
+            Canvas(Modifier.matchParentSize().testTag("record-selection")) {
+                val inset=1.dp.toPx()
+                drawRoundRect(colors.onSurface.copy(alpha=highlightAlpha),highlight.topLeft+Offset(inset,inset),
+                    Size(highlight.width-2*inset,highlight.height-2*inset),CornerRadius(9.dp.toPx()),style=Stroke(2*inset))
+            }
         }
     }
 }
@@ -188,9 +231,10 @@ internal fun RecordSectionNumber(value: String,modifier: Modifier=Modifier) {
 }
 
 @Composable
-private fun DiffExcerpt(label: String,text: String,accent: Color,background: Color,foreground: Color,modifier: Modifier=Modifier) {
+private fun DiffExcerpt(label: String,text: String,accent: Color,background: Color,foreground: Color,
+    modifier: Modifier=Modifier,labelColor: Color=accent) {
     Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(6.dp)) {
-        Text(label.withInterfaceDigits(),style=MaterialTheme.typography.labelLarge,color=accent)
+        Text(label.withInterfaceDigits(),style=MaterialTheme.typography.labelLarge,color=labelColor)
         Text(
             text,style=MaterialTheme.typography.bodyLarge,color=foreground,
             modifier=modifier.fillMaxWidth()
@@ -202,25 +246,5 @@ private fun DiffExcerpt(label: String,text: String,accent: Color,background: Col
                 .clip(RoundedCornerShape(16.dp)).background(background)
                 .padding(horizontal=14.dp,vertical=8.dp),
         )
-    }
-}
-
-@Composable
-fun RecordsScreen(state: PreviewState,onBack: ()->Unit) {
-    val business=LocalBusiness.current
-    val owner=business?.session?.collectAsStateWithLifecycle()?.value?.account?.id
-    val remote=if(business!=null&&owner!=null) {
-        val revision=business.writes.collectAsStateWithLifecycle().value
-        rememberRequest(business,owner,revision){business.profile(owner,1,true).calendar}
-    } else null
-    PageFrame("记录",onBack,"records-screen") {
-        when {
-            business==null -> RecordCalendar("lin",owner=state.signedIn,snapshots=state.snapshots,cleared=state.snapshotsCleared,initialExpanded=true)
-            owner==null -> RemoteState("请登录后查看创作记录")
-            remote?.first?.value!=null -> RecordCalendar(owner,true,state.snapshots,false,initialExpanded=true,calendar=remote.first.value)
-            remote!=null -> RemoteState(remote.first.error ?: "正在加载创作记录…",
-                action=remote.first.error?.let {"重新加载"},onAction=remote.second)
-        }
-        Spacer(Modifier.height(28.dp))
     }
 }

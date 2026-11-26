@@ -66,7 +66,8 @@ class PageCompletionTest {
         val pixels=cover.captureToImage().toPixelMap()
         return pixels[pixels.width/4,pixels.height/40].toArgb()
     }
-    private fun pickPhoto(target: SemanticsNodeInteraction,source: File) {
+    private fun pickPhoto(target: SemanticsNodeInteraction,source: File,cancelled: Boolean=false,
+        select: TouchInjectionScope.()->Unit={click(center)}) {
         val request=PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
         val intent=ActivityResultContracts.PickVisualMedia().createIntent(app.activity,request)
         val filter=IntentFilter(requireNotNull(intent.action)).apply {
@@ -74,10 +75,12 @@ class PageCompletionTest {
             intent.categories?.forEach {addCategory(it)}
         }
         val instrumentation=InstrumentationRegistry.getInstrumentation()
-        val result=Instrumentation.ActivityResult(Activity.RESULT_OK,Intent().setData(Uri.fromFile(source)))
+        val result=if(cancelled)Instrumentation.ActivityResult(Activity.RESULT_CANCELED,null)
+            else Instrumentation.ActivityResult(Activity.RESULT_OK,Intent().setData(Uri.fromFile(source)))
         val monitor=instrumentation.addMonitor(filter,result,true)
         try {
-            target.performScrollTo().performTouchInput {click(center)}
+            target.performScrollTo().performTouchInput(select)
+            app.waitForIdle()
             assertTrue(instrumentation.checkMonitorHit(monitor,1))
         } finally {instrumentation.removeMonitor(monitor)}
     }
@@ -93,6 +96,7 @@ class PageCompletionTest {
             app.mainClock.advanceTimeBy(400)
             val leaving=app.onNodeWithTag("profile-guest").getUnclippedBoundsInRoot()
             val identity=app.onNodeWithTag("profile-identity").getUnclippedBoundsInRoot()
+            app.onNodeWithText("密码至少 8 位").assertDoesNotExist()
             assertTrue("Login content exits downward",leaving.top.value>before.top.value+1f)
             assertEquals("Login does not exit horizontally",before.left.value,leaving.left.value,.5f)
             app.mainClock.advanceTimeBy(800)
@@ -163,16 +167,30 @@ class PageCompletionTest {
         })
         source.outputStream().use {assertTrue(image.compress(Bitmap.CompressFormat.PNG,100,it))}
         image.recycle()
-        val avatarButton=app.onNodeWithText("更换头像")
+        val avatarTrack=app.onNodeWithTag("avatar-change-track")
+        val avatarHandle=app.onNodeWithTag("edit-avatar-preview",useUnmergedTree=true)
+        fun trackWidth()=avatarTrack.getUnclippedBoundsInRoot().let {it.right-it.left}
+        val fullWidth=trackWidth()
+        val travel=avatarTrack.fetchSemanticsNode().boundsInRoot.width-avatarHandle.fetchSemanticsNode().boundsInRoot.width*1.2f
+        val dragAvatar: TouchInjectionScope.()->Unit={swipe(center,center+Offset(travel+width*.4f,0f),500)}
         val coverFrame=app.onNodeWithTag("edit-cover-frame")
         val preview=app.onNodeWithTag("edit-cover-preview",useUnmergedTree=true)
         val adjustedColor: Int
         try {
-            pickPhoto(avatarButton,source)
+            val start=avatarHandle.getUnclippedBoundsInRoot()
+            avatarHandle.performTouchInput {swipe(center,center+Offset(travel*.4f,0f),400)}
+            assertEquals(start,avatarHandle.getUnclippedBoundsInRoot())
+            pickPhoto(avatarHandle,source,cancelled=true,select=dragAvatar)
+            assertEquals(fullWidth,trackWidth())
+            app.onNodeWithTag("avatar-crop-frame").assertDoesNotExist()
+            pickPhoto(avatarHandle,source,select=dragAvatar)
             app.waitUntilAtLeastOneExists(hasTestTag("avatar-crop-frame"),7_500)
+            assertTrue(trackWidth()<fullWidth)
+            avatarHandle.assertDoesNotExist()
             app.onNodeWithText("取消").performClick()
             app.onNodeWithTag("avatar-crop-frame").assertDoesNotExist()
-            pickPhoto(avatarButton,source)
+            assertEquals(fullWidth,trackWidth())
+            pickPhoto(avatarHandle,source,select=dragAvatar)
             app.waitUntilAtLeastOneExists(hasTestTag("avatar-crop-frame"),7_500)
             val slider=app.onNodeWithTag("avatar-crop-zoom")
             val track=app.onNodeWithTag("avatar-crop-track",useUnmergedTree=true)
@@ -189,6 +207,7 @@ class PageCompletionTest {
             }
             app.onNodeWithTag("avatar-crop-confirm").performClick()
             app.waitUntilDoesNotExist(hasTestTag("avatar-crop-dialog"),7_500)
+            assertEquals(fullWidth,trackWidth())
             coverFrame.assertTextContains("上传封面")
             pickPhoto(coverFrame,source)
             app.waitUntil(7_500) {
@@ -221,7 +240,18 @@ class PageCompletionTest {
         val coverPosition=saved.getFloat("cover_position",.5f)
         assertTrue(coverPosition>.5f)
         app.onNodeWithTag("profile-identity").performClick()
-        app.onNodeWithTag("edit-cover-remove").assertContentDescriptionEquals("移除封面").performScrollTo().performClick()
+        app.waitUntil(7_500) {
+            app.onAllNodesWithTag("edit-cover-preview",useUnmergedTree=true).fetchSemanticsNodes().isNotEmpty()
+        }
+        val remove=app.onNodeWithTag("edit-cover-remove").assertContentDescriptionEquals("移除封面").performScrollTo()
+        app.mainClock.autoAdvance=false
+        try {
+            remove.performClick()
+            app.mainClock.advanceTimeBy(96)
+            preview.assertExists()
+            app.mainClock.advanceTimeBy(240)
+            preview.assertDoesNotExist()
+        } finally {app.mainClock.autoAdvance=true}
         coverFrame.assertTextContains("上传封面")
         back()
         app.onNodeWithText("放弃").performClick()
@@ -273,10 +303,10 @@ class PageCompletionTest {
     @Test fun recoveryValidatesCodeAndCollapsesBackToLogin() {
         navigate("我的")
         app.onNodeWithText("忘记密码").performScrollTo().performClick()
-        app.onNodeWithTag("account-email").performScrollTo().performTextInput("reader@example.invalid")
+        input("account-email").performScrollTo().performTextInput("reader@example.invalid")
         Espresso.closeSoftKeyboard()
         app.onNodeWithTag("account-send-code").performScrollTo().performClick()
-        app.onNodeWithTag("recovery-code").performScrollTo().performTextInput("000000")
+        input("recovery-code").performScrollTo().performTextInput("000000")
         Espresso.closeSoftKeyboard()
         app.onNodeWithTag("account-password").performScrollTo().performTextInput("demo-reset-123")
         app.onNodeWithTag("account-confirmation").performScrollTo().performTextInput("demo-reset-123")
@@ -284,21 +314,23 @@ class PageCompletionTest {
         Espresso.closeSoftKeyboard()
         app.onNodeWithText("重置密码").performScrollTo().performClick()
         app.onNodeWithText("验证码有误").assertExists()
-        app.onNodeWithTag("recovery-code").performScrollTo().performTextReplacement("123456")
+        input("recovery-code").performScrollTo().performTextReplacement("123456")
         Espresso.closeSoftKeyboard()
         Espresso.closeSoftKeyboard()
         app.onNodeWithText("重置密码").performScrollTo().performClick()
         app.onNodeWithTag("forgot-screen").assertDoesNotExist()
         app.onNodeWithTag("recovery-code").assertDoesNotExist()
         app.onNodeWithTag("account-confirmation").assertDoesNotExist()
-        app.onNodeWithText("设置完成，请登录").assertExists()
+        app.onNodeWithText("密码已重置，请登录").assertExists()
         app.onNodeWithTag("login-screen").assertExists()
-        app.onNodeWithTag("account-email").assertTextContains("reader@example.invalid")
+        input("account-email").assertTextContains("reader@example.invalid")
         app.onNodeWithTag("main-circle").assertIsDisplayed()
     }
 
     @Test fun recordsHaveConfirmationSummaryDiffAndCancelableMonthSelection() {
         enterDemo();settings()
+        app.onNodeWithText("记录").assertIsDisplayed()
+        app.onNodeWithText("创作记录").assertDoesNotExist()
         app.onNodeWithContentDescription("本地修改记录开关").assertIsOff().performClick()
         app.onNodeWithText("开启修改记录？").assertIsDisplayed()
         app.onNodeWithText("确定").performClick()

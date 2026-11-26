@@ -14,6 +14,7 @@
   <script defer src="vendor/gsap.min.js"></script>
   <script defer src="archive-button-press.js"></script>
   <script defer src="editor-motion.js"></script>
+  <script defer src="publish-sling.js"></script>
   <script defer src="app.js"></script>
   <script defer src="context-tools.js"></script>
   <script defer src="native.js"></script>
@@ -33,27 +34,55 @@
 
     <header class="header">
       <button class="icon-button back" id="back-button" data-action="back" aria-label="返回"><span data-icon="back"></span></button>
-      <span class="preview-label" id="preview-label" hidden>预览</span>
+      <button class="review-action" id="cloud-recovery" data-action="cloud-recovery" hidden>处理同步冲突</button>
       <button class="icon-button more" id="more-button" data-action="menu" aria-label="更多选项" aria-expanded="false" aria-controls="overflow-menu"><span data-icon="more"></span></button>
-      <button class="send-button" data-action="send" aria-label="检查并预览文章"><span class="press-surface" data-press-surface aria-hidden="true"></span><span data-icon="send"></span></button>
+      <div class="publish-control" id="publish-control">
+        <svg viewBox="-28 -28 56 56" class="sling-well" aria-hidden="true">
+          <path class="sling-band"/>
+          <circle class="sling-track" r="25"/>
+          <circle class="sling-tension" r="25" pathLength="1" stroke-dasharray="0 1"/>
+        </svg>
+        <span class="sling-particles" aria-hidden="true"></span>
+        <button type="button" class="send-button" data-action="send" aria-label="检查并预览文章">
+          <span data-icon="send"></span>
+        </button>
+      </div>
     </header>
 
     <section class="writing-area" id="writing-area" aria-label="编辑内容">
       <div class="title-field">
         <textarea id="topic-title" aria-label="标题" rows="1" placeholder="标题" spellcheck="false"></textarea>
-        <span class="title-count" id="title-count" aria-live="polite">0 字</span>
       </div>
       <div id="rich-editor" class="body-editor rich-document"></div>
     </section>
+    <span class="title-count" id="title-count" aria-live="polite">0 字</span>
 
-    <article id="preview" class="preview rich-document" aria-label="文章预览" hidden>
-      <img id="preview-cover" class="preview-cover" alt="封面" hidden>
+    <article id="preview" class="preview" aria-label="文章预览" inert hidden>
       <h1 id="preview-title"></h1>
+      <div class="preview-author" id="preview-author">
+        <div class="preview-author-clip">
+          <div class="preview-author-row">
+            <span class="preview-avatar" aria-hidden="true">
+              <span id="preview-avatar-symbol" data-icon="person"></span>
+              <img id="preview-avatar-image" alt="" hidden>
+            </span>
+            <div class="preview-byline">
+              <span id="preview-author-name">我</span>
+              <span class="preview-metadata"><time id="preview-date"></time><span> · </span><span id="preview-duration"></span></span>
+            </div>
+            <div class="preview-review">
+              <span id="review-status" hidden></span>
+              <button class="review-action" id="cancel-review" data-action="cancel-review" hidden>撤回审核</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <img id="preview-cover" class="preview-cover" alt="封面" hidden>
       <p id="preview-summary" class="preview-summary" hidden></p>
-      <div id="preview-body"></div>
+      <div id="preview-body" class="rich-document"></div>
     </article>
 
-    <div class="body-count counter" id="body-count"><span id="body-count-value">0 / 20</span></div>
+    <div class="body-count counter" id="body-count"><span id="body-count-value"></span></div>
 
     <section class="island" id="island" aria-label="编辑工具">
       <button class="grabber" id="grabber" data-action="expand" aria-label="展开格式工具" aria-expanded="false"><span></span></button>
@@ -132,15 +161,11 @@
 
     <button class="menu-dismiss" id="menu-dismiss" aria-label="关闭更多选项" hidden></button>
     <div class="overflow-menu" id="overflow-menu" role="menu" aria-label="更多选项" hidden>
-      <div class="save-status" role="status"><span data-icon="cloud"></span><span id="save-label">草稿自动保存</span></div>
-      <button id="cloud-save" data-action="cloud-save" role="menuitem" hidden><span data-icon="cloud"></span><span>同步到云端</span></button>
-      <button id="cloud-reload" data-action="cloud-reload" role="menuitem" hidden><span data-icon="cloud"></span><span>重新读取云端</span></button>
-      <button id="cloud-copy" data-action="cloud-copy" role="menuitem" hidden><span data-icon="pen"></span><span>另存为新草稿</span></button>
-      <button id="cloud-export" data-action="cloud-export" role="menuitem" hidden><span data-icon="book"></span><span>导出 Markdown</span></button>
-      <button data-action="preview" role="menuitem"><span data-icon="book"></span><span>预览</span></button>
-      <button class="destructive" data-action="discard" role="menuitem"><span data-icon="trash"></span><span>舍弃</span></button>
+      <button type="button" data-action="export" role="menuitem"><span data-icon="book"></span><span>导出 Markdown</span></button>
+      <button type="button" class="destructive" data-action="discard" role="menuitem"><span data-icon="trash"></span><span>舍弃</span></button>
     </div>
 
+    <span class="screen-reader-status" role="status" id="save-label">自动保存</span>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <dialog id="action-dialog" aria-labelledby="dialog-title">
       <form id="dialog-form">

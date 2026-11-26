@@ -9,6 +9,8 @@ import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import com.semiovert.app.core.data.RequestState
+import com.semiovert.app.core.data.loadSnapshot
 import com.semiovert.app.core.model.Article
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
@@ -26,17 +28,36 @@ fun LayoutCoordinates.articleBoundsInRoot()=Rect(localToRoot(Offset.Zero),Size(s
     var duration by mutableStateOf(Rect.Zero)
 }
 
+internal class ReaderReturnContent(val article: Article,
+    val layout: @Composable (ReaderAnchors,Float,Float)->Unit)
+
+@Stable
+internal class ReaderLoad {
+    val playback=LoadingPlayback()
+    private var cache by mutableStateOf(RequestState<Article>())
+    val cacheChecked get()=!cache.loading
+    val cacheMissed get()=cacheChecked&&cache.value==null
+
+    suspend fun checkCache(read: suspend ()->Article?) =
+        loadSnapshot(read).also {cache=RequestState(it,loading=false)}
+
+    suspend fun awaitCache()=snapshotFlow {cache}.first {!it.loading}.value
+}
+
 @Stable class ArticleExpansionState(private val scope: CoroutineScope) {
     var source by mutableStateOf<ArticleSource?>(null);private set
     var progress by mutableFloatStateOf(0f);private set
     var settling by mutableStateOf(false);private set
     var returning by mutableStateOf(false);private set
+    internal var openingLoad by mutableStateOf<ReaderLoad?>(null);private set
+    internal var returningReader by mutableStateOf<ReaderReturnContent?>(null);private set
     private var sourceMeasured by mutableStateOf(false)
     var anchors by mutableStateOf(ReaderAnchors());private set
     private val origins=mutableStateListOf<Pair<ArticleSource,ReaderAnchors>>()
     var motionEnabled=true
     var onStart: ()->Unit={}
     internal var beforeHomeOpen: ((()->Unit)->Unit)={it()}
+    internal var readCachedArticle: (suspend (String)->Article?)?=null
     private var navigate: ()->Unit={}
     private var job: Job?=null
     private var committed=false
@@ -71,7 +92,12 @@ fun LayoutCoordinates.articleBoundsInRoot()=Rect(localToRoot(Offset.Zero),Size(s
     fun cancelDrag() {if(active&&!settling&&!committed&&!returning)finish(false)}
     private fun finish(commit: Boolean,initialVelocity: Float=velocity) {
         job?.cancel();settling=true
+        val readCache=readCachedArticle
+        val articleId=source?.article?.id
+        val load=if(commit&&readCache!=null&&articleId!=null)ReaderLoad() else null
+        openingLoad=load
         job=scope.launch {
+            if(load!=null&&readCache!=null&&articleId!=null)launch {load.checkCache {readCache(articleId)}}
             val target=if(commit)1f else 0f
             if(commit&&motionEnabled)snapshotFlow {anchors.title!=Rect.Zero&&anchors.author!=Rect.Zero&&
                 anchors.date!=Rect.Zero&&anchors.duration!=Rect.Zero}.first {it}
@@ -90,25 +116,28 @@ fun LayoutCoordinates.articleBoundsInRoot()=Rect(localToRoot(Offset.Zero),Size(s
     /** The measured reader has entered composition; no duplicate route animation. */
     fun readerReady(id: String) {
         if(isOpeningReader(id)) {
-            origins.add(source!! to anchors);source=null;progress=0f;committed=false
+            origins.add(source!! to anchors);source=null;progress=0f;committed=false;openingLoad=null
         }
     }
-    fun close(id: String,onBack: ()->Unit) {
+    internal fun close(reader: ReaderReturnContent,onBack: ()->Unit) {
         if(active)return
-        val origin=origins.lastOrNull()?.takeIf {it.first.article.id==id}
+        val origin=origins.lastOrNull()?.takeIf {it.first.article.id==reader.article.id}
         if(origin==null){onBack();return}
         origins.removeAt(origins.lastIndex)
         if(!motionEnabled){onBack();return}
         job?.cancel();onStart();returning=true;settling=true;sourceMeasured=false;progress=1f;velocity=0f;anchors=origin.second;source=origin.first
+        returningReader=reader
         onBack()
         job=scope.launch {
-            // Reverse only once the real source is laid out again, not against an estimated card.
-            snapshotFlow {sourceMeasured}.first {it}
             animate(1f,0f,animationSpec=SceneMotion.readingCloseSpec(origin.first.origin)){value,speed->progress=value;velocity=speed}
-            progress=0f;velocity=0f;source=null;returning=false;settling=false
+            progress=0f;velocity=0f;source=null;returning=false;settling=false;returningReader=null
         }
     }
-    fun needsSourceMeasurement(articleId: String)=returning&&!sourceMeasured&&source?.article?.id==articleId
+    fun needsSourceMeasurement(articleId: String): Boolean {
+        val origin=source ?: return false
+        return returning&&!sourceMeasured&&origin.article.id==articleId&&
+            SceneMotion.readingOpeningText(contentProgress,origin.origin,returning=true)==1f
+    }
     fun sourceReady(origin: ArticleSource) {
         if(needsSourceMeasurement(origin.article.id)&&
             listOf(origin.card,origin.title,origin.author,origin.date,origin.duration).none {it==Rect.Zero}) {

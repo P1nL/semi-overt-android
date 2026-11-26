@@ -24,6 +24,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.text
 import androidx.compose.ui.text.AnnotatedString
@@ -38,12 +40,17 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.currentStateAsState
 import com.semiovert.app.core.designsystem.InterfaceDigitFont
 import com.semiovert.app.core.designsystem.withInterfaceDigits
 import com.semiovert.app.core.designsystem.motionMillis
 import com.semiovert.app.core.designsystem.LocalBrowseAnnotationAlpha
+import com.semiovert.app.core.designsystem.LocalMotionEnabled
 import com.semiovert.app.core.designsystem.readingChromeFade
 import kotlin.math.roundToInt
+import kotlin.random.Random
 
 internal object DeckCounterLayout {
     const val SEARCH_HEADER_TOP=76f
@@ -57,6 +64,7 @@ internal object DeckCounterLayout {
 @Stable private class CounterNumbers {
     var current by mutableIntStateOf(1)
     var total by mutableIntStateOf(1)
+    var loadingMessage by mutableStateOf<String?>(null)
     var previousOwner: String?=null
     val slots=mutableStateListOf<CounterSlot>()
 }
@@ -81,8 +89,9 @@ private fun Paint.visibleDigitBounds(value: String,bottom: Float?): RectF {
     var alpha by mutableFloatStateOf(1f)
 }
 private class CounterVisit(val owner: String?,val inherited: CounterSlot?)
+private data class CounterValue(val number: Int?,val rolling: Boolean)
 private data class CounterMotion(val visit: CounterVisit,val holding: Boolean,val capacity: Int,val numbers: CounterNumbers,
-    val current: Transition<Int>,val total: Transition<Int>)
+    val current: Transition<CounterValue>,val total: Transition<CounterValue>)
 private val LocalCounterMotion=compositionLocalOf<CounterMotion?> {null}
 private fun String?.hasDeckCounter()=this=="category"||this=="search"
 
@@ -96,8 +105,21 @@ fun DeckCounterHost(owner: String?,capacity: Int,navigating: Boolean=false,conte
         CounterVisit(owner,inherited)
     }
     SideEffect {numbers.previousOwner=owner}
-    val current=updateTransition(numbers.current,label="deck-current")
-    val total=updateTransition(numbers.total,label="deck-total")
+    val loading=owner.hasDeckCounter()&&numbers.slots.any {it.page==owner}&&numbers.loadingMessage!=null
+    val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
+    val rolling=loading&&LocalMotionEnabled.current&&lifecycle.isAtLeast(Lifecycle.State.STARTED)
+    var digits by remember {mutableStateOf(2 to 7)}
+    if(rolling) {
+        val clock=rememberInfiniteTransition(label="deck-loading").animateFloat(0f,10f,
+            infiniteRepeatable(tween(1600,easing=LinearEasing)),label="deck-loading-clock")
+        LaunchedEffect(clock) {
+            snapshotFlow {clock.value.toInt()}.collect {
+                digits=(digits.first+Random.nextInt(1,10))%10 to (digits.second+Random.nextInt(1,10))%10
+            }
+        }
+    }
+    val current=updateTransition(CounterValue(if(rolling)digits.first else numbers.current.takeUnless {loading},rolling),label="deck-current")
+    val total=updateTransition(CounterValue(if(rolling)digits.second else numbers.total.takeUnless {loading},rolling),label="deck-total")
     val motion=CounterMotion(visit,navigating&&visit.inherited!=null,capacity,numbers,current,total)
     var origin by remember {mutableStateOf(Offset.Zero)}
     Box(Modifier.fillMaxSize().onGloballyPositioned {origin=it.positionInRoot()}) {
@@ -108,7 +130,8 @@ fun DeckCounterHost(owner: String?,capacity: Int,navigating: Boolean=false,conte
 
 @Composable
 internal fun DeckCounter(current: Int,total: Int,page: String,modifier: Modifier=Modifier,categoryLabel: String?=null,
-    compact: Boolean=false,categoryLabelFrame: State<String>?=null,counterOcclusionTop: Dp?=null) {
+    compact: Boolean=false,categoryLabelFrame: State<String>?=null,counterOcclusionTop: Dp?=null,
+    loadingMessage: String?=null) {
     val motion=LocalCounterMotion.current?:return
     val slot=remember(page) {CounterSlot(page)}
     val annotationAlpha=LocalBrowseAnnotationAlpha.current
@@ -121,6 +144,7 @@ internal fun DeckCounter(current: Int,total: Int,page: String,modifier: Modifier
         if(motion.visit.owner==page) {
             motion.numbers.current=current
             motion.numbers.total=total
+            motion.numbers.loadingMessage=loadingMessage
         }
     }
     val density=LocalDensity.current
@@ -171,15 +195,17 @@ internal fun DeckCounter(current: Int,total: Int,page: String,modifier: Modifier
         SideEffect {slot.line=line}
         Column(Modifier.fillMaxWidth()) {
             if(categoryLabel!=null) {
-                val numerator=motion.current.targetState.toString()
-                val denominator=motion.total.targetState.toString()
+                val numerator=current.toString()
+                val denominator=total.toString()
                 val visibleBottom=counterOcclusionTop?.let {
                     with(density){it.toPx()-top.roundToPx()-labelHeight.roundToPx()+topBearing.roundToPx()}-layout.firstBaseline
                 }
-                val inkCenter=remember(paint,numerator,denominator,visibleBottom) {
-                    val left=paint.visibleDigitBounds(numerator,visibleBottom)
-                    val right=paint.visibleDigitBounds(denominator,visibleBottom)
-                    (left.left-paint.measureText(numerator)+right.right)*.5f
+                val inkCenter=remember(paint,numerator,denominator,visibleBottom,loadingMessage) {
+                    if(loadingMessage!=null)0f else {
+                        val left=paint.visibleDigitBounds(numerator,visibleBottom)
+                        val right=paint.visibleDigitBounds(denominator,visibleBottom)
+                        (left.left-paint.measureText(numerator)+right.right)*.5f
+                    }
                 }
                 val labelCenter by animateFloatAsState(inkCenter,tween(motionMillis(360)),label="category-label-center")
                 Box(Modifier.fillMaxWidth().height(labelHeight).readingChromeFade().graphicsLayer {alpha=annotationAlpha},
@@ -213,19 +239,27 @@ private fun DeckCounterLayer(motion: CounterMotion,rootOrigin: ()->Offset) {
         IntOffset(position.x.roundToInt(),position.y.roundToInt())
     }.size(line.width,line.height).readingChromeFade().graphicsLayer {alpha=if(held!=null)1f else slot.alpha}
         .clipToBounds().testTag("deck-counter").clearAndSetSemantics {
-            contentDescription="第 ${motion.numbers.current} 篇，共 ${motion.numbers.total} 篇"
+            contentDescription=motion.numbers.loadingMessage ?: "第 ${motion.numbers.current} 篇，共 ${motion.numbers.total} 篇"
+            if(motion.numbers.loadingMessage!=null)progressBarRangeInfo=ProgressBarRangeInfo.Indeterminate
         }) {
         Row(Modifier.fillMaxWidth().offset(y=-line.topBearing),
             verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.Center) {
-            @Composable fun Number(transition: Transition<Int>,wrap: Boolean,alignment: TextAlign) {
+            @Composable fun Number(transition: Transition<CounterValue>,wrap: Boolean,alignment: TextAlign) {
                 transition.AnimatedContent(modifier=Modifier.width(line.columnWidth).height(line.height),contentAlignment=Alignment.Center,
                     transitionSpec={
-                        val forward=if(wrap&&initialState==motion.numbers.total&&targetState==1)true
-                            else if(wrap&&initialState==1&&targetState==motion.numbers.total)false else targetState>initialState
+                        val initial=initialState.number
+                        val target=targetState.number
+                        val forward=when {
+                            initialState.rolling||targetState.rolling||initial==null||target==null->true
+                            wrap&&initial==motion.numbers.total&&target==1->true
+                            wrap&&initial==1&&target==motion.numbers.total->false
+                            else->target>initial
+                        }
+                        val millis=if(targetState.rolling)minOf(140,duration) else duration
                         val direction=if(forward)1 else -1
-                        (slideInVertically(tween(duration)){it*direction}+fadeIn(tween(duration))) togetherWith
-                            (slideOutVertically(tween(duration)){-it*direction}+fadeOut(tween(duration)))
-                    }) {value->Text(value.toString(),modifier=Modifier.fillMaxWidth(),style=line.style,
+                        (slideInVertically(tween(millis)){it*direction}+fadeIn(tween(millis))) togetherWith
+                            (slideOutVertically(tween(millis)){-it*direction}+fadeOut(tween(millis)))
+                    }) {value->Text(value.number?.toString()?:"–",modifier=Modifier.fillMaxWidth(),style=line.style,
                         textAlign=alignment,color=ink,maxLines=1,softWrap=false)}
             }
             Number(motion.current,true,TextAlign.Right)

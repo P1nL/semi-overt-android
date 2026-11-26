@@ -94,7 +94,7 @@ class EditorEntryPerformanceTest {
                 assertEquals("true", eval("editor.can().undo()"))
             }
             // Parking resets transient UI without clearing content or undo history.
-            eval("actions.preview(); SemiNative.close()")
+            eval("showPreview(); SemiNative.close()")
             app.waitUntil(5_000) { !open.value }
             app.waitForIdle()
             app.onNodeWithTag("article-editor").assertDoesNotExist()

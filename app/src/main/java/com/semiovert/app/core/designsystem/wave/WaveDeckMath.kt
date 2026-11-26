@@ -24,7 +24,7 @@ object WaveDeckMath {
     const val DOWNWARD_GAIN=1.25f
     const val SEARCH_VISIBLE=6
     const val CATEGORY_VISIBLE=7
-    const val PROFILE_VISIBLE=5
+    const val PROFILE_VISIBLE=CATEGORY_VISIBLE
     const val RESTING_VISIBLE_FRACTION=.7f
     const val TOP_INSET=16f
     const val BOTTOM_OVERFLOW=160f
@@ -92,6 +92,7 @@ object WaveDeckMath {
 
     fun frames(count: Int,position: Float,g: WaveDeckGeometry,visibleLimit: Int=count): List<WaveCardPose> {
         if(count==0)return emptyList()
+        if(count==1)return listOf(WaveCardPose(0,g.width/2f,g.frontY,1f,1f,g.frontHeight))
         val visible=visibleLimit.coerceIn(1,count)
         if(count>visible)return windowedFrames(count,position,g,visible)
         val poses=(0 until count).map {article ->
@@ -105,7 +106,7 @@ object WaveDeckMath {
             val lag=min(.10f+.035f*slot,.28f)
             val wave=sin(PI.toFloat()*fraction)
             val shift=fraction+lag*wave*wave
-            val depth=if(count==1)0f else slot+shift
+            val depth=slot+shift
             val top=stackTop(depth,g)
             // HomeShowcaseRail.vue: first/second neighbours receive .25/.10
             // of the crest. Continue that falloff for the taller mobile stack.

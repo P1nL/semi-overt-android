@@ -1,6 +1,9 @@
 package com.semiovert.app
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -12,7 +15,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.semiovert.app.core.designsystem.SoTheme
+import com.semiovert.app.core.model.ThemeMode
 import com.semiovert.app.feature.records.RecordCalendar
+import java.time.LocalDate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -38,6 +43,34 @@ class RecordCalendarTest {
 
         app.onNodeWithTag("record-day-29").performClick()
         app.onNodeWithText("10月29日·0字").assertIsDisplayed()
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test fun recordTiersFillLargerCellsInsideTheSameCalendarBounds() {
+        val words=mutableStateOf(emptyMap<LocalDate,Int>())
+        fun date(day: Int)=LocalDate.of(2026,10,day)
+        app.setContent {
+            SoTheme(ThemeMode.LIGHT) {
+                Column { RecordCalendar("lin",owner=true,snapshots=false,cleared=false,initialExpanded=true,calendar=words.value) }
+            }
+        }
+        val panel=app.onNodeWithTag("record-calendar-grid").getUnclippedBoundsInRoot()
+        fun cell(day: Int)=app.onNodeWithTag("record-day-$day")
+        fun width(day: Int)=cell(day).getUnclippedBoundsInRoot().let {(it.right-it.left).value}
+        fun area(day: Int)=cell(day).getUnclippedBoundsInRoot().let {(it.right-it.left).value*(it.bottom-it.top).value}
+        val zeroWidth=width(9)
+        assertEquals(zeroWidth,width(5),1f)
+        assertEquals(area(5),area(12),65f)
+        app.runOnIdle {words.value=mapOf(date(5) to 299,date(6) to 300,date(7) to 800)}
+        assertEquals(panel,app.onNodeWithTag("record-calendar-grid").getUnclippedBoundsInRoot())
+        assertTrue(width(9)<zeroWidth)
+        assertTrue(area(7)>area(6)&&area(6)>area(5)&&area(5)>area(12))
+        for((day,fill) in listOf(5 to Color(0xFFBF0FFF),6 to Color(0xFFCBFF49),7 to Color(0xFF12BFBF))) {
+            val pixels=cell(day).captureToImage().toPixelMap()
+            assertEquals(fill,pixels[pixels.width/2,pixels.height/8])
+        }
+        cell(7).performClick().assertIsSelected()
+        app.onNodeWithText("10月7日·800字").assertIsDisplayed()
     }
 
     @Test fun expandedCalendarUsesLargerWeekdaysDigitsAndSummary() {

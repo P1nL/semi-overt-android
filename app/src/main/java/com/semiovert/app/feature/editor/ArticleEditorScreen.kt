@@ -35,6 +35,8 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsAnimationCompat
 import com.semiovert.app.core.designsystem.LocalMotionEnabled
+import com.semiovert.app.core.designsystem.ContentLoading
+import com.semiovert.app.core.designsystem.StatusText
 import com.semiovert.app.core.web.WebViewStartup
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -60,6 +62,7 @@ internal fun ArticleEditorScreen(
     val density = LocalDensity.current
     val navigationBottom = WindowInsets.navigationBarsIgnoringVisibility.getBottom(density)
     val motion = LocalMotionEnabled.current
+    val currentMotion by rememberUpdatedState(motion)
     val palette = EditorPalette.forTheme(MaterialTheme.colorScheme.background.luminance() < .5f)
     val currentPalette by rememberUpdatedState(palette)
     val scope = rememberCoroutineScope()
@@ -105,6 +108,7 @@ internal fun ArticleEditorScreen(
                 web?.applyEditorTheme(currentPalette)
                 web?.let { browser ->
                     ViewCompat.getRootWindowInsets(browser)?.let { browser.applyEditorKeyboardInset(it) }
+                    browser.evaluateJavascript("window.SemiNativeEditor?.setMotionEnabled($currentMotion)", null)
                 }
                 web?.postVisualStateCallback(1L, object : WebView.VisualStateCallback() {
                     override fun onComplete(requestId: Long) {
@@ -137,6 +141,9 @@ internal fun ArticleEditorScreen(
             Log.e("ArticleEditor", "WebView startup failed", error)
             failed = true
         }
+    }
+    LaunchedEffect(web, motion) {
+        web?.evaluateJavascript("window.SemiNativeEditor?.setMotionEnabled($motion)", null)
     }
     LaunchedEffect(ready, motion, closing) {
         if (closing) {
@@ -217,11 +224,13 @@ internal fun ArticleEditorScreen(
                 it.revealProgress = progress.value
             },
         )
+        ContentLoading(!ready&&!closing&&!failed&&editorSession.hasCloudDraft,
+            "正在读取草稿",Modifier.align(Alignment.Center))
         if (failed) Column(
             Modifier.fillMaxSize().background(Color(palette.background)),
             verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text("编辑器加载失败", color = Color(palette.foreground))
+            StatusText("编辑器加载失败", color = Color(palette.foreground))
             if (web != null) Button(onClick = { failed = false; web?.reload() }) { Text("重试") }
             Button(onClick = requestClose) { Text("返回") }
         }

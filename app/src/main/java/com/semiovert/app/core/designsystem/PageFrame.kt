@@ -8,6 +8,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
@@ -38,10 +39,10 @@ fun DemoNotice(text: String="请填写以下信息") {
 
 @Composable
 fun ProfileAvatar(variant: Int=0,size: Int=56,backgroundColor: Color=MaterialTheme.colorScheme.secondary,
-    contentColor: Color=MaterialTheme.colorScheme.onSecondary,photo: ImageBitmap?=null) {
+    contentColor: Color=MaterialTheme.colorScheme.onSecondary,photo: ImageBitmap?=null,filterQuality: FilterQuality=FilterQuality.Low) {
     Surface(shape=CircleShape,color=backgroundColor,modifier=Modifier.size(size.dp)) {
         // Shared-element bounds change every frame; scale the symbol with those bounds, not the final size argument.
-        if(photo!=null) Image(photo,null,Modifier.fillMaxSize(),contentScale=ContentScale.Crop)
+        if(photo!=null) Image(photo,null,Modifier.fillMaxSize(),contentScale=ContentScale.Crop,filterQuality=filterQuality)
         else Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center) {SoIcon(when(variant%3) {1->SoSymbol.BOOK;2->SoSymbol.HOME;else->SoSymbol.PERSON},modifier=Modifier.fillMaxSize(.48f),tint=contentColor)}
     }
 }
@@ -64,7 +65,9 @@ fun ConfirmationSheet(title: String,body: String,confirm: String="确定",onConf
             Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                 val confirmSpark=rememberSparkControl();val cancelSpark=rememberSparkControl()
                 Button(onClick={close(onConfirm)},interactionSource=confirmSpark.source,modifier=Modifier.weight(1f).heightIn(min=48.dp).then(confirmSpark.modifier)) {Text(confirm)}
-                OutlinedButton(onClick={close {}},interactionSource=cancelSpark.source,modifier=Modifier.weight(1f).heightIn(min=48.dp).then(cancelSpark.modifier)) {Text("取消")}
+                OutlinedButton(onClick={close {}},interactionSource=cancelSpark.source,
+                    colors=ButtonDefaults.outlinedButtonColors(contentColor=MaterialTheme.colorScheme.accentInk),
+                    modifier=Modifier.weight(1f).heightIn(min=48.dp).then(cancelSpark.modifier)) {Text("取消")}
             }
         }
     }

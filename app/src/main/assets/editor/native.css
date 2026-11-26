@@ -1,18 +1,18 @@
 html, body { position: fixed; inset: 0; overflow: hidden; overscroll-behavior: none; }
 body { display: block; background: transparent; }
 .phone {
+  --editor-top: 72px;
   width: 100%; height: 100%;
   background: transparent;
   border-radius: 0; box-shadow: none; transform: none;
 }
 .status-bar { display: none; }
-.writing-area { top: 72px; }
 .body-editor { min-height: 0; }
-.preview { top: 88px; }
 .overflow-menu { top: 52px; }
 @media (max-height: 500px) {
+  .phone { --editor-top: 62px; }
   .header { height: 56px; }
-  .writing-area { top: 62px; bottom: 151px; }
+  .writing-area { bottom: 151px; }
   .title-field { margin-bottom: 12px; }
   .body-count { bottom: 133px; }
 }

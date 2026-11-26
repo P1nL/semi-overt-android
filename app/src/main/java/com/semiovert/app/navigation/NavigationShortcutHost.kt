@@ -50,7 +50,7 @@ import kotlin.math.roundToInt
     var draftMenu: DockedDraftMenu?=null
 }
 internal class DraftShortcutDrag(val move: (Offset)->Unit,val finish: (Boolean)->Unit)
-internal data class DockedDraftCircle(val action: HomeDraftAction,val centerInRoot: Offset)
+internal data class DockedDraftCircle(val action: HomeDraftAction,val centerInRoot: Offset,val stretch: State<Float>)
 internal class DockedDraftMenu(val owner: Any,val items: List<DockedDraftCircle>,
     val press: (HomeDraftAction?)->Unit,val pull: (HomeDraftAction,Offset,Float)->Unit,val detach: (HomeDraftAction)->Unit,
     val tap: (HomeDraftAction)->Unit,val finish: (Boolean)->Unit)
@@ -60,7 +60,7 @@ private data class ShortcutEntry(val item: NavigationShortcut,val target: Destin
     val colors: CircleColors get()=target?.circleColors?:checkNotNull(draft).colors
     val label: String get()=target?.label?:checkNotNull(draft).label
 }
-private data class ShortcutVisual(val entry: ShortcutEntry,val hover: Float,val stretch: Float,
+private data class ShortcutVisual(val entry: ShortcutEntry,val hover: Float,val stretch: Float,val elasticStretch: Float,
     val radius: Float,val contactRadius: Float,val joined: Boolean,val neckProgress: Float)
 
 /** Pointer coordinates stay at this fixed root; only the small draw layers move. */
@@ -220,17 +220,16 @@ private fun ShortcutLayer(destination: Destination?,onNavigate: (Destination)->U
                             val rest=(currentItem.centerInRoot-mainInRoot)/density
                             val pullOrigin=(latestOrigin+held.position-mainInRoot)/density
                             var attachedCenter=currentItem.centerInRoot
-                            var attachedStretch=0f
                             fun move(pointerInRoot: Offset) {
                                 val pointer=(pointerInRoot-mainInRoot)/density
                                 if(controller==null&&RadialNavigationGesture.canPin(pointer)) {
-                                    controller=host.beginDraftDrag(item.action,attachedCenter,attachedCenter,attachedStretch)
+                                    controller=host.beginDraftDrag(item.action,attachedCenter,attachedCenter,currentItem.stretch.value)
                                     if(controller!=null)menu.detach(item.action)
                                 }
                                 val active=controller
                                 if(active!=null)active.move(pointerInRoot) else {
                                     attachedCenter=mainInRoot+RadialNavigationGesture.attachedCenter(pointer,pullOrigin,rest)*density
-                                    attachedStretch=.8f*RadialNavigationGesture.pullProgress(pointer,pullOrigin,rest)
+                                    val attachedStretch=.8f*RadialNavigationGesture.pullProgress(pointer,pullOrigin,rest)
                                     menu.pull(item.action,attachedCenter,attachedStretch)
                                 }
                             }
@@ -299,7 +298,7 @@ private fun ShortcutLayer(destination: Destination?,onNavigate: (Destination)->U
             val parts=joined.map {visual->
                 val small=visual.entry.state.center*density
                 val radius=visual.radius*density
-                LiquidShadowPart(small,radius,visual.stretch,LiquidCircleGeometry.bridge(main,28f*density,small,radius,
+                LiquidShadowPart(small,radius,visual.stretch,visual.elasticStretch,LiquidCircleGeometry.bridge(main,28f*density,small,radius,
                     (28f+visual.contactRadius+ShortcutLiquidContact.HOLD_DISTANCE)*density,reveal=visual.neckProgress))
             }
             FusionShadow(main,parts)
@@ -325,21 +324,22 @@ private fun shortcutVisual(entry: ShortcutEntry,mainCenter: Offset): ShortcutVis
     val hover by animateFloatAsState(if(state.dragging)RadialNavigationGesture.SELECTED_SCALE else 1f,
         if(motion)RadialNavigationGesture.scaleSpring() else snap(),label="shortcut-hold")
     val detach=entry.detachProgress?.value?:1f
-    val stretchTarget=entry.detachStretch*(1f-detach)+RadialNavigationGesture.mergeStretch(distance)*detach
-    val stretch by animateFloatAsState(if(motion&&active)stretchTarget else 0f,
-        if(motion)RadialNavigationGesture.stretchSpring() else snap(),label="shortcut-liquid-pull")
+    val elasticStretch=if(motion&&active)RadialNavigationGesture.detachRecoil(entry.detachStretch,detach) else 0f
+    val mergeStretch by animateFloatAsState(if(motion&&active)RadialNavigationGesture.mergeStretch(distance)*detach else 0f,
+        if(motion)RadialNavigationGesture.stretchSpring() else snap(),label="shortcut-liquid-return")
+    val stretch=elasticStretch+mergeStretch
     val smallRadius=NavigationCircleSize.value/2f*hover*state.absorption
     val contactRadius=LiquidCircleGeometry.facingRadius(smallRadius,stretch)
     val joined=contact.next(distance,28f,contactRadius,motion&&active)
     val neckProgress by animateFloatAsState(if(joined)1f else 0f,
         if(joined)RadialNavigationGesture.neckAppearMotion() else snap(),label="shortcut-neck-appear")
     SideEffect {contact.update(distance,28f,contactRadius,motion&&active)}
-    return ShortcutVisual(entry,hover,stretch,smallRadius,contactRadius,joined,neckProgress)
+    return ShortcutVisual(entry,hover,stretch,elasticStretch,smallRadius,contactRadius,joined,neckProgress)
 }
 
 /** All units are pixels; leave a real shadow outset instead of recording a tight circle-sized box. */
 @Composable
-private fun BoxScope.FusionShadow(main: Offset,parts: List<LiquidShadowPart>) {
+internal fun BoxScope.FusionShadow(main: Offset,parts: List<LiquidShadowPart>,tag: String="shortcut-fusion-shadow") {
     val density=LocalDensity.current.density
     val path=liquidFusionOutline(main,28f*density,parts)
     val bounds=path.getBounds().inflate(16f*density)
@@ -350,9 +350,10 @@ private fun BoxScope.FusionShadow(main: Offset,parts: List<LiquidShadowPart>) {
     val shadow=if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.Q)Modifier.shadow(6.dp,shape,clip=false)
         else Modifier.dropShadow(shape,Shadow(radius=6.dp,color=Color.Black.copy(alpha=.22f),offset=DpOffset(0.dp,3.dp)))
     Box(Modifier.offset {IntOffset(bounds.left.roundToInt(),bounds.top.roundToInt())}
+        .wrapContentSize(AbsoluteAlignment.TopLeft,unbounded=true)
         .size((bounds.width/density).dp,(bounds.height/density).dp).zIndex(.25f)
         .drawWithContent {clipPath(path,ClipOp.Difference) {this@drawWithContent.drawContent()}}
-        .then(shadow).testTag("shortcut-fusion-shadow"))
+        .then(shadow).testTag(tag))
 }
 
 @Composable
@@ -392,7 +393,7 @@ private fun BoxScope.ShortcutCircle(visual: ShortcutVisual,mainCenter: Offset,ma
     }.clickable(interactionSource=null,indication=null,enabled=enabled&&!state.merging,onClickLabel=onClickLabel,onClick=onClick),
         contentAlignment=Alignment.Center) {
         NavigationBubble(entry.colors,visual.hover*state.absorption,visual.stretch,mainCenter-state.center,Modifier,
-            shadowElevation=if(visual.joined)0.dp else 3.dp) {
+            shadowElevation=if(visual.joined)0.dp else 3.dp,elasticStretch=visual.elasticStretch) {
             val page=entry.target
             if(page!=null)SoIcon(page.symbol,modifier=Modifier.size(NavigationCircleIconSize),tint=entry.colors.foreground)
             else HomeDraftIcon(checkNotNull(entry.draft))

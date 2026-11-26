@@ -15,6 +15,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.semiovert.app.core.designsystem.SceneMotion
 import com.semiovert.app.core.data.SampleLibrary
 import com.semiovert.app.core.data.PreviewViewModel
+import com.semiovert.app.core.model.Cover
 import com.semiovert.app.core.model.NavigationPlacement
 import java.io.File
 import org.junit.Assert.*
@@ -240,14 +241,15 @@ class SharedCardMotionTest {
         app.onNodeWithTag("reader-screen").assertDoesNotExist()
     }
     @Test fun ownPublicArticlesShareLiftAndReturnWithoutReplayingProfileEntrance() {
+        app.runOnIdle {
+            val model=ViewModelProvider(app.activity)[PreviewViewModel::class.java]
+            model.profile(model.state.value.profile.copy(cover=Cover.FOREST))
+        }
         navigate("我的")
         field("account-email").performScrollTo().performTextInput("reader@example.invalid")
         app.onNodeWithTag("account-password").performScrollTo().performTextInput("reader-pass-123")
         Espresso.closeSoftKeyboard()
         app.onNodeWithTag("account-submit").performScrollTo().performClick();app.waitForIdle()
-        app.onNodeWithTag("profile-identity").performClick()
-        app.onNodeWithText("林间",useUnmergedTree=true).performScrollTo().performClick()
-        app.onNodeWithText("保存资料").performScrollTo().performClick();app.waitForIdle()
         app.onNodeWithTag("profile-shared-avatar",useUnmergedTree=true).assertIsDisplayed()
         app.onNodeWithTag("profile-cover-image",useUnmergedTree=true).assertIsDisplayed()
         app.onNodeWithText("我的",useUnmergedTree=true).assertDoesNotExist()

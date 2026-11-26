@@ -43,12 +43,12 @@ internal fun guestIdentityInk(background: Color)=if(background.luminance()>.5f)C
 internal class GuestGhostPlayback {
     var loaded by mutableStateOf(false)
         private set
-    private var animation by mutableStateOf<IntroGhost?>(null)
+    private var animation by mutableStateOf<LottieArtwork?>(null)
     private var playTime by mutableLongStateOf(0L)
     private var avatars by mutableIntStateOf(0)
 
     suspend fun load(context: Context,ink: Color) {
-        animation=IntroGhost.load(context,ink)
+        animation=LottieArtwork.load(context,"identity/startup-ghost.json",ink)
         loaded=true
     }
 

@@ -11,7 +11,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.luminance
 import androidx.core.view.WindowCompat
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.semiovert.app.core.data.PreviewViewModel
 import com.semiovert.app.core.data.LocalBusiness
@@ -42,12 +44,15 @@ class MainActivity: ComponentActivity() {
             val snapshots = remember(business, account?.id, historyRevision) {
                 account?.id?.let { business?.history?.enabled(it) } == true
             }
-            LaunchedEffect(business) { business?.restore() }
+            LaunchedEffect(business) {
+                if (business != null) lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { business.restore() }
+            }
             LaunchedEffect(business, account?.id) {
-                if (business != null && account != null) {
-                    try { business.updateCurrentProfile(account.id) }
-                    catch (error: kotlinx.coroutines.CancellationException) { throw error }
-                    catch (_: com.semiovert.app.core.data.ApiFailure) { }
+                if (business != null && account != null) business.showLocalProfile(account.id)
+            }
+            LaunchedEffect(business, account?.id, session?.restoring, session?.authenticated) {
+                if (business != null && account != null && session?.restoring == false) {
+                    lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { business.syncAtOpen(account.id) }
                 }
             }
             val state = if (business == null) preferences else preferences.copy(
@@ -57,13 +62,13 @@ class MainActivity: ComponentActivity() {
                 snapshotsCleared = false,
             )
             val photoKey=state.profile.avatarPhoto.takeIf {state.signedIn}
-            val photo=rememberProfilePhoto(photoKey)
             CompositionLocalProvider(LocalBusiness provides business) {
+            val photo=rememberProfilePhoto(photoKey)
             MotionEnvironment {ThemeRevealHost {SoTheme(state.theme) {
                 val light=MaterialTheme.colorScheme.surface.luminance()>.5f
                 SideEffect {WindowCompat.getInsetsController(window,window.decorView).apply {isAppearanceLightNavigationBars=light}}
                 Surface(Modifier.fillMaxSize(),color=MaterialTheme.colorScheme.background) {
-                    IdentityIntroHost(state.signedIn,state.profile.avatar,photo=photo.bitmap,photoKey=photoKey) {
+                    IdentityIntroHost(state.signedIn,state.profile.avatar,photo=photo.bitmap,photoKey=photoKey,photoLoaded=photo.loaded) {
                         AppNavigation(state,model) {statusLight ->WindowCompat.getInsetsController(window,window.decorView).isAppearanceLightStatusBars=statusLight}
                     }
                 }

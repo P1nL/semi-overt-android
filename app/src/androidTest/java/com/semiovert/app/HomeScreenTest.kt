@@ -52,10 +52,10 @@ class HomeScreenTest {
         val colors=model.articles.indices.map(::homeArticleCoverColor)
         val swatches=setOf(
             Color(0xFFC33538),Color(0xFFEB641B),Color(0xFFF8961E),Color(0xFFE96149),Color(0xFFFFCF10),
-            Color(0xFF158624),Color(0xFF2CB38B),Color(0xFF118480),Color(0xFF9946A9),Color(0xFF1F50D5),
+            Color(0xFF6A7C20),Color(0xFF2CB38B),Color(0xFF118480),Color(0xFF9946A9),Color(0xFF1F50D5),Color(0xFF653563),
         )
         assertEquals(swatches,colors.toSet())
-        assertTrue(colors.indices.all {index->colors[index]!=colors[(index+1)%colors.size]})
+        assertEquals(colors.size,colors.distinct().size)
         colors.forEach {color->
             val ink=SoPalette.inkOn(color).luminance()
             val fill=color.luminance()

@@ -32,6 +32,9 @@ import com.semiovert.app.core.designsystem.LocalMotionEnabled
 import com.semiovert.app.core.designsystem.SoEase
 import com.semiovert.app.core.designsystem.SoIcon
 import com.semiovert.app.core.designsystem.SoSymbol
+import com.semiovert.app.core.designsystem.ContentLoading
+import com.semiovert.app.core.designsystem.RemoteState
+import com.semiovert.app.core.designsystem.StatusText
 import com.semiovert.app.core.designsystem.withInterfaceDigits
 import com.semiovert.app.feature.editor.EditorDraft
 import kotlin.math.roundToInt
@@ -74,6 +77,7 @@ internal fun DraftBoxBubble(
     deletingKey: String? = null,
     onDeleteDraft: (EditorDraft) -> Unit = {},
     message: String? = null,
+    onRetry: () -> Unit = onLoad,
 ) {
     val source = state.source ?: return
     val motion = LocalMotionEnabled.current
@@ -146,41 +150,35 @@ internal fun DraftBoxBubble(
                 Row(Modifier.fillMaxWidth().padding(start = 24.dp, top = 4.dp, end = 12.dp, bottom = 4.dp),
                     verticalAlignment = Alignment.CenterVertically) {
                     Spacer(Modifier.width(36.dp))
-                    Text((if (loading) "正在读取" else "${drafts.size}篇草稿").withInterfaceDigits(), Modifier.weight(1f),
+                    Text((if (loading || drafts.isEmpty()) "草稿箱" else "${drafts.size}篇草稿").withInterfaceDigits(), Modifier.weight(1f),
                         style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = colors.onSurface)
                     IconButton(onClick = dismiss, modifier = Modifier.testTag("draft-box-close")) {
                         SoIcon(SoSymbol.CLOSE, "收起草稿箱")
                     }
                 }
                 HorizontalDivider(Modifier.padding(horizontal = 24.dp), color = colors.outlineVariant)
-                if(!loading&&!failed&&message!=null) Row(Modifier.padding(horizontal=20.dp),verticalAlignment=Alignment.CenterVertically) {
-                    Text("仅显示本机草稿",Modifier.weight(1f),style=MaterialTheme.typography.bodySmall)
-                    TextButton(onClick=onLoad){Text("重试")}
-                }
-                when {
-                    loading -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(Modifier.size(28.dp), color = colors.onSurfaceVariant, strokeWidth = 2.dp)
-                    }
-                    failed -> Column(Modifier.weight(1f).fillMaxWidth().padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                        Text(message ?: "草稿读取失败", style = MaterialTheme.typography.bodyLarge, color = colors.onSurface)
-                        TextButton(onClick = onLoad) { Text("重新读取") }
-                    }
-                    drafts.isEmpty() -> Column(Modifier.weight(1f).fillMaxWidth().padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                        IconButton(onClick = { openAfterClosing = true; state.expanded = false },
-                            modifier = Modifier.size(56.dp).testTag("draft-box-create")) {
-                            Icon(painterResource(HomeDraftAction.CREATE.icon), "创建草稿",
-                                Modifier.size(36.dp), tint = colors.onSurfaceVariant)
+                if(!loading&&!failed&&message!=null) RemoteState(message,action="重试",onAction=onRetry)
+                Box(Modifier.weight(1f).fillMaxWidth()) {
+                    when {
+                        loading -> Unit
+                        failed -> RemoteState(message ?: "草稿读取失败", Modifier.align(Alignment.Center), "重试", onRetry)
+                        drafts.isEmpty() -> Column(Modifier.fillMaxSize().padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                            IconButton(onClick = { openAfterClosing = true; state.expanded = false },
+                                modifier = Modifier.size(56.dp).testTag("draft-box-create")) {
+                                Icon(painterResource(HomeDraftAction.CREATE.icon), "创建草稿",
+                                    Modifier.size(36.dp), tint = colors.onSurfaceVariant)
+                            }
+                            StatusText("暂无草稿", Modifier.padding(top = 16.dp),
+                                style = MaterialTheme.typography.titleMedium, color = colors.onSurface)
                         }
-                        Text("还没有草稿", Modifier.padding(top = 16.dp),
-                            style = MaterialTheme.typography.titleMedium, color = colors.onSurface)
+                        else -> DraftBoxList(drafts, bubbleColor, deletingKey, onOpen = { draft ->
+                            pendingDraft = draft
+                            openAfterClosing = true
+                            state.expanded = false
+                        }, onDelete = onDeleteDraft, modifier = Modifier.fillMaxSize())
                     }
-                    else -> DraftBoxList(drafts, bubbleColor, deletingKey, onOpen = { draft ->
-                        pendingDraft = draft
-                        openAfterClosing = true
-                        state.expanded = false
-                    }, onDelete = onDeleteDraft, modifier = Modifier.weight(1f).fillMaxWidth())
+                    ContentLoading(loading&&state.expanded,"正在读取草稿箱",Modifier.align(Alignment.Center))
                 }
                 Spacer(Modifier.height(16.dp))
             }

@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.webkit.WebView
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso.onView
@@ -15,12 +16,14 @@ import com.semiovert.app.core.designsystem.LocalMotionEnabled
 import com.semiovert.app.core.designsystem.SoTheme
 import com.semiovert.app.core.model.ReadingDuration
 import com.semiovert.app.feature.editor.ArticleEditorScreen
+import com.semiovert.app.feature.editor.ArticleEditorSession
 import com.semiovert.app.feature.editor.rememberArticleEditorSession
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import org.json.JSONTokener
 import org.junit.Assert.*
 import org.junit.Assume.assumeTrue
 import org.junit.Rule
@@ -180,16 +183,23 @@ class LiveBusinessIntegrationTest {
         val endpoint = fixtureUri("fixtureEndpoint")
         val api = LiveBusiness(context, endpoint)
         val owner = runBlocking { register(api).first }
+        val storageKey = "business-test:$owner:${UUID.randomUUID()}"
         val ready = AtomicBoolean(false)
+        val open = mutableStateOf(true)
+        val editorSession = AtomicReference<ArticleEditorSession>()
         ui.setContent {
-            CompositionLocalProvider(LocalMotionEnabled provides false, LocalBusiness provides api) {
+            CompositionLocalProvider(LocalMotionEnabled provides true, LocalBusiness provides api) {
                 SoTheme {
-                    val editor = rememberArticleEditorSession("business-test:$owner", api, owner)
-                    ArticleEditorScreen(onBack = {}, onReady = { ready.set(true) }, session = editor)
+                    val editor = rememberArticleEditorSession(storageKey, api, owner)
+                    editorSession.set(editor)
+                    if (open.value) ArticleEditorScreen(
+                        onBack = { open.value = false }, onReady = { ready.set(true) }, session = editor,
+                    )
                 }
             }
         }
         ui.waitUntil(20_000) { ready.get() }
+        assertEquals("true", evaluate("cloudReady && !cloudBlocked && !cloudLocked && !cloudMetadata.remoteId"))
         val content = "编辑器保存和送审使用真实服务器接口，版本以服务器响应为准。".repeat(6)
         evaluate("""
             document.querySelector('#topic-title').value = '安卓编辑器云端自动保存';
@@ -210,30 +220,140 @@ class LiveBusinessIntegrationTest {
         ui.waitUntil(10_000) { evaluate("!cloudBusy") == "true" }
         val remoteBody = "$content\n\n另一台设备已修改正文。"
         runBlocking { api.saveDraft(owner, saved, saved.content.copy(body = remoteBody)) }
-        fun submitFromEditor() {
-            evaluate("""
-                document.querySelector('.send-button').click();
-                document.querySelector('.send-button').click();
-                document.querySelector('#dialog-form').requestSubmit();
-                true;
-            """.trimIndent())
-        }
-        submitFromEditor()
+        assertEquals("true", evaluate("""
+            window.publishIconCentered = () => {
+              const bounds = $('.send-button').getBoundingClientRect();
+              const artwork = $('.send-button [data-icon="send"] path');
+              const center = new DOMPoint(13.75, 10.25).matrixTransform(artwork.getScreenCTM());
+              return Math.hypot(center.x - (bounds.left + bounds.width / 2),
+                center.y - (bounds.top + bounds.height / 2)) < .5;
+            };
+            const send = $('.send-button');
+            const sendIcon = $('.send-button [data-icon="send"]');
+            const ring = $('.sling-well');
+            const ink = getComputedStyle(sendIcon).color;
+            window.recordPublishFade = change => {
+              const read = () => [
+                Number(getComputedStyle(send, '::before').opacity), Number(getComputedStyle(ring).opacity),
+                getComputedStyle(send).opacity === '1' && getComputedStyle(send).backgroundColor === 'rgb(229, 240, 230)' &&
+                  getComputedStyle(sendIcon).color === ink && getComputedStyle(sendIcon).opacity === '1',
+              ];
+              const frames = [read()];
+              window.publishFrames = frames;
+              window.publishFadeDone = false;
+              change();
+              const finish = performance.now() + 300;
+              requestAnimationFrame(function sample(now) {
+                frames.push(read());
+                if (now < finish) requestAnimationFrame(sample);
+                else window.publishFadeDone = true;
+              });
+            };
+            window.publishFadeMatches = (start, end) => {
+              const frames = publishFrames;
+              return frames[0][0] === start && frames[0][1] === start &&
+                frames.at(-1)[0] === end && frames.at(-1)[1] === end &&
+                (reducePreviewMotion() || frames.some(([fill]) => fill > 0 && fill < 1)) &&
+                frames.every(([fill, ring, stable], index) => stable && Math.abs(fill - ring) < .01 &&
+                  (!index || (fill - frames[index - 1][0]) * (end - start) >= 0));
+            };
+            cloudBusy = true;
+            recordPublishFade(() => send.click());
+            state.preview && send.disabled && !dialog.open && $('#publish-control').classList.contains('sling') &&
+              getComputedStyle(send, '::before').backgroundColor === 'rgb(17, 132, 128)' &&
+              sendIcon === $('.send-button [data-icon]') && publishIconCentered() &&
+              $('#preview-author-name').textContent === ${JSONObject.quote(api.session.value.account?.profile?.name)}
+        """.trimIndent()))
+        ui.waitUntil(5_000) { evaluate("publishFadeDone") == "true" }
+        assertEquals("true", evaluate("publishFadeMatches(0, 1)"))
+        assertEquals("true", evaluate("""
+            cloudBusy = false;
+            updateCloudButtons();
+            recordPublishFade(() => $('#back-button').click());
+            !state.preview && !$('.send-button').disabled
+        """.trimIndent()))
+        ui.waitUntil(5_000) { evaluate("publishFadeDone") == "true" }
+        assertEquals("true", evaluate("publishFadeMatches(1, 0)"))
+        assertEquals("DRAFT", runBlocking { api.editDraft(owner, draft.id).status })
+        assertEquals("true", evaluate("""
+            $('.send-button').click();
+            $('.send-button').click();
+            $('.send-button').click();
+            !dialog.open && cloudBusy && $('.send-button').disabled &&
+              (reducePreviewMotion() || $('#publish-control').hasAttribute('data-launching'))
+        """.trimIndent()))
         ui.waitUntil(10_000) { evaluate("cloudBlocked") == "true" }
+        assertEquals("true", evaluate("$('.send-button').disabled && getComputedStyle($('.send-button')).opacity === '1'"))
         assertEquals("true", evaluate("JSON.parse(localStorage.getItem(draftKey)).dirty && body.trim() === ${JSONObject.quote(content)}"))
         assertEquals("DRAFT", runBlocking { api.editDraft(owner, draft.id).status })
-        evaluate("actions['cloud-reload'](); document.querySelector('#dialog-form').requestSubmit(); true;")
+        evaluate("$('#cloud-recovery').click(); dialog.querySelector('[data-action=cloud-reload]').click(); true;")
         ui.waitUntil(10_000) { evaluate("!cloudBusy && !cloudBlocked") == "true" }
         assertEquals("true", evaluate("body.trim() === ${JSONObject.quote(remoteBody)}"))
-        submitFromEditor()
-        runBlocking {
+        assertEquals("true", evaluate("""
+            $('.send-button').click();
+            window.pullPublish = (offsetX, offsetY, expectedProgress, expectedRotation) => {
+              const control = $('#publish-control');
+              const button = $('.send-button');
+              const scale = control.getBoundingClientRect().width / control.offsetWidth;
+              const pointer = (type, x, y) => button.dispatchEvent(new PointerEvent(type, {
+                pointerId: 1, pointerType: 'touch', clientX: 50 + x * scale, clientY: 50 + y * scale, bubbles: true,
+              }));
+              pointer('pointerdown', 0, 0);
+              pointer('pointermove', offsetX, offsetY);
+              const armed = control.hasAttribute('data-armed');
+              const progress = parseFloat(control.querySelector('.sling-tension').getAttribute('stroke-dasharray'));
+              const rotation = button.querySelector('[data-icon="send"]').style.transform;
+              const centered = publishIconCentered();
+              pointer('pointerup', offsetX, offsetY);
+              button.dispatchEvent(new MouseEvent('click', { detail: 1, bubbles: true }));
+              return armed === (expectedProgress === 1) && Math.abs(progress - expectedProgress) < .001 &&
+                rotation === 'rotate(' + expectedRotation + 'deg)' && centered;
+            };
+            pullPublish(0, 6, .06, -45) && !cloudBusy &&
+              pullPublish(-68, 0, .68, 45) && !cloudBusy && !dialog.open
+        """.trimIndent()))
+        assertEquals("true", evaluate("pullPublish(0, 100, 1, -45) && cloudBusy && !dialog.open"))
+        val pending = runBlocking {
             repeat(15) {
-                if (api.editDraft(owner, draft.id).status == "PENDING") return@runBlocking
+                val current = api.editDraft(owner, draft.id)
+                if (current.status == "PENDING") return@runBlocking current
                 delay(400)
             }
             error("Editor did not submit the synchronized draft")
         }
-        ui.waitUntil(10_000) { evaluate("cloudLocked && !editor.isEditable") == "true" }
+        ui.waitUntil(10_000) {
+            evaluate("""
+                cloudLocked && state.preview && titleInput.readOnly && !editor.isEditable &&
+                  $('#review-status').textContent === '待审核' && !$('#cancel-review').hidden
+            """.trimIndent()) == "true"
+        }
+        assertEquals(checkNotNull(saved.version) + 2, pending.version)
+        evaluate("SemiNativeEditor.back()")
+        ui.waitUntil(10_000) { !open.value }
+        ui.runOnIdle {
+            ready.set(false)
+            editorSession.get().selectDraft(null)
+            open.value = true
+        }
+        ui.waitUntil(20_000) { ready.get() }
+        assertEquals("true", evaluate("!state.preview && editor.isEditable && !titleInput.readOnly"))
+        evaluate("titleInput.value = '即将舍弃的草稿'; titleInput.dispatchEvent(new Event('input')); true;")
+        ui.waitUntil(10_000) { evaluate("Boolean(cloudMetadata.remoteId) && !cloudBusy") == "true" }
+        val discardId = JSONTokener(evaluate("cloudMetadata.remoteId")).nextValue().toString()
+        assertEquals("true", evaluate("""
+            const discard = $('#overflow-menu [data-action=discard]');
+            $('#more-button').click();
+            discard.click();
+            const confirm = dialog.open && $('#dialog-content').textContent.includes('云端');
+            $('#dialog-form').requestSubmit();
+            confirm && cloudBusy
+        """.trimIndent()))
+        ui.waitUntil(10_000) {
+            evaluate("!cloudBusy && !cloudMetadata.remoteId && !titleInput.value && !localStorage.getItem(draftKey)") == "true"
+        }
+        assertEquals(404, assertThrows(ApiFailure::class.java) {
+            runBlocking { api.editDraft(owner, discardId) }
+        }.status)
         runBlocking {
             api.cancelReview(owner, draft.id)
             api.deleteDraft(owner, draft.id)

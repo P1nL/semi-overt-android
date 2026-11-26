@@ -26,6 +26,8 @@ import android.widget.Toast
 import androidx.annotation.Keep
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -35,6 +37,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.webkit.WebViewAssetLoader
 import com.semiovert.app.core.data.*
+import com.semiovert.app.core.model.PreviewProfile
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -74,30 +77,43 @@ internal class ArticleEditorSession(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var loaded = false
     private var preparing = false
-    private var remoteHint: String? = null
+    private var remoteHint by mutableStateOf<String?>(null)
+    val hasCloudDraft get() = cloud && remoteHint != null
     private var serverDraft: CloudDraft? = null
     private var blocked = false
     private var syncing = false
+    private var readingDrafts = false
     private var mediaRequests = 0
     private var palette = EditorPalette.Light
+    @Volatile private var previewProfile: PreviewProfile? = null
     private val main = Handler(Looper.getMainLooper())
-    var drafts by mutableStateOf<List<EditorDraft>>(emptyList())
-        private set
-    var draftsLoading by mutableStateOf(false)
-        private set
-    var draftsFailed by mutableStateOf(false)
-        private set
-    var draftsMessage by mutableStateOf<String?>(null)
-        private set
+    private var localDrafts by mutableStateOf<List<EditorDraft>?>(null)
+    private var localDraftsLoading by mutableStateOf(false)
+    private var localDraftsFailed by mutableStateOf(false)
+    private var draftIndex by mutableStateOf<RequestState<List<CloudDraftItem>>?>(null)
+    val drafts by derivedStateOf { mergeDrafts(localDrafts.orEmpty(), draftIndex?.value) }
+    val draftsLoading get() = localDraftsLoading || (cloud && !localDraftsFailed &&
+        (localDrafts == null || (drafts.isEmpty() && draftIndex?.loading != false)))
+    val draftsFailed get() = localDraftsFailed || (drafts.isEmpty() && draftIndex?.error != null)
+    val draftsMessage get() = if (localDraftsFailed) "草稿读取失败" else draftIndex?.error
     var deletingDraftKey by mutableStateOf<String?>(null)
         private set
+
+    init {
+        if (business != null && owner != null) scope.launch {
+            business.draftIndex.collect { state ->
+                draftIndex = state?.takeIf { it.owner == owner && business.ownsLocalLibrary(owner) }?.request
+            }
+        }
+    }
 
     @Keep
     private inner class Bridge {
         @JavascriptInterface fun ready(key: String) = post {
             if (key != activeStorageKey) return@post
             loaded = true
-            if (draftsLoading) readDrafts()
+            applyPreviewProfile()
+            if (localDraftsLoading) readDrafts()
             if (!cloud) this@ArticleEditorSession.ready()
             else if (callbacks != null) prepareCloud()
         }
@@ -105,9 +121,13 @@ internal class ArticleEditorSession(
             if (!syncing && mediaRequests == 0) callbacks?.close?.invoke()
         }
         @JavascriptInterface fun cloudSave(key: String, action: String, data: String) = post {
-            if (key == activeStorageKey && cloud && callbacks != null && data.length <= 150_000) {
-                if (action == "reload") prepareCloud(reload = true)
-                else syncCloud(action, data)
+            if (key == activeStorageKey && cloud && callbacks != null) {
+                when {
+                    data.length > 150_000 -> web?.evaluateJavascript(
+                        "window.SemiNativeEditor?.cloudFailed('草稿内容过长', false)", null)
+                    action == "reload" -> prepareCloud(reload = true)
+                    else -> syncCloud(action, data)
+                }
             }
         }
         @JavascriptInterface fun cloudImage(key: String, request: String, type: String, data: String) = post {
@@ -137,6 +157,21 @@ internal class ArticleEditorSession(
         callbacks?.ready?.invoke()
     }
 
+    fun updatePreviewProfile(profile: PreviewProfile?) {
+        if (previewProfile == profile) return
+        previewProfile = profile
+        if (loaded) applyPreviewProfile()
+    }
+
+    private fun applyPreviewProfile() {
+        val profile = previewProfile
+        val avatar = profile?.avatarPhoto?.let { photo ->
+            if (cloud && Uri.parse(photo).scheme == "https") photo else "/editor-avatar/current?photo=${Uri.encode(photo)}"
+        }
+        val payload = json("name" to (profile?.name ?: "我"), "avatar" to avatar, "variant" to (profile?.avatar ?: 0))
+        web?.evaluateJavascript("window.SemiNativeEditor?.setPreviewAuthor($payload)", null)
+    }
+
     fun attach(palette: EditorPalette, host: EditorHostCallbacks): WebView {
         check(!destroyed)
         this.palette = palette
@@ -155,12 +190,14 @@ internal class ArticleEditorSession(
     }
 
     /** Read the same local document used by the editor, including drafts saved before this UI existed. */
-    fun loadDrafts(palette: EditorPalette) {
-        if (destroyed) return
+    fun loadDrafts(palette: EditorPalette, retry: Boolean = false) {
+        if (destroyed || localDraftsLoading) return
         this.palette = palette
-        draftsLoading = true
-        draftsFailed = false
-        draftsMessage = null
+        localDraftsLoading = true
+        localDraftsFailed = false
+        if (retry && draftIndex?.error != null && business != null && owner != null) {
+            scope.launch { business.refreshDraftBox(owner) }
+        }
         val browser = web ?: createWebView(palette)
         browser.onResume()
         if (failed) browser.reload()
@@ -168,6 +205,8 @@ internal class ArticleEditorSession(
     }
 
     private fun readDrafts() {
+        if (readingDrafts) return
+        readingDrafts = true
         val base = JSONObject.quote(storageKey)
         web?.evaluateJavascript("""
             (() => {
@@ -178,38 +217,28 @@ internal class ArticleEditorSession(
             })()
         """.trimIndent()) { encoded ->
             if (destroyed) return@evaluateJavascript
-            val local = runCatching {
+            val stored = runCatching {
                 val items = JSONArray(JSONTokener(encoded).nextValue() as String)
                 items.objects().mapNotNull { item -> EditorDraft.fromJson(item, item.getString("key")) }
-            }.getOrElse {
-                draftsFailed = true; draftsLoading = false
-                return@evaluateJavascript
-            }
-            if (!cloud) {
-                drafts = local.sortedByDescending { it.updatedAt }
-                draftsLoading = false
-            } else scope.launch {
-                try {
-                    val linked = local.filter { it.remoteId != null }.associateBy { it.remoteId }
-                    val remote = checkNotNull(business).drafts(checkNotNull(owner)).map { item ->
-                        val cached = linked[item.id]
-                        val summary = EditorDraft.fromCloud(item, cached?.key ?: "$storageKey:cloud:${item.id}")
-                        if (cached?.localChanges == true) cached.copy(status = item.status, reason = item.reason)
-                        else summary
-                    }
-                    val ids = remote.mapNotNull { it.remoteId }.toSet()
-                    drafts = (remote + local.filter { it.remoteId == null || (it.localChanges && it.remoteId !in ids) })
-                        .sortedByDescending { it.updatedAt }
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (error: Exception) {
-                    drafts = local.sortedByDescending { it.updatedAt }
-                    draftsMessage = error.userMessage()
-                    draftsFailed = local.isEmpty()
-                } finally { draftsLoading = false }
-            }
+            }.getOrNull()
+            if (stored != null) localDrafts = stored else localDraftsFailed = true
+            localDraftsLoading = false
+            readingDrafts = false
             if (callbacks == null) web?.onPause()
         }
+    }
+
+    private fun mergeDrafts(local: List<EditorDraft>, index: List<CloudDraftItem>?): List<EditorDraft> {
+        if (index == null) return local.sortedByDescending { it.updatedAt }
+        val linked = local.filter { it.remoteId != null }.associateBy { it.remoteId }
+        val remote = index.map { item ->
+            val cached = linked[item.id]
+            if (cached?.localChanges == true) cached.copy(status = item.status, reason = item.reason)
+            else EditorDraft.fromCloud(item, cached?.key ?: "$storageKey:cloud:${item.id}")
+        }
+        val ids = remote.mapNotNull { it.remoteId }.toSet()
+        return (remote + local.filter { it.remoteId == null || (it.localChanges && it.remoteId !in ids) })
+            .sortedByDescending { it.updatedAt }
     }
 
     fun selectDraft(draft: EditorDraft?): String {
@@ -236,7 +265,7 @@ internal class ArticleEditorSession(
                 if (destroyed) return@evaluateJavascript
                 deletingDraftKey = null
                 if (result == "true") {
-                    drafts = drafts.filterNot { it.key == draft.key }
+                    localDrafts = localDrafts?.filterNot { it.key == draft.key }
                     if (activeStorageKey == draft.key) {
                         activeStorageKey = storageKey
                         documentReady = false
@@ -276,30 +305,39 @@ internal class ArticleEditorSession(
                     val local = DraftContent.fromEditor(raw)
                     val dirty = raw.optBoolean("dirty")
                     remoteHint = currentId
-                    val document = currentId?.let { checkNotNull(business).editDraft(checkNotNull(owner), it) }
-                    if (activeStorageKey != key) return@launch
+                    val live = checkNotNull(business)
+                    val account = checkNotNull(owner)
+                    val document = currentId?.let { id ->
+                        try { if (reload) live.editDraft(account, id) else live.openDraft(account, id) }
+                        catch (error: ApiFailure) {
+                            if (!error.canUseSnapshot || reload || raw.id("remoteId") != id) throw error
+                            CloudDraft(id, raw.text("remoteVersion")?.toLongOrNull(), raw.text("status") ?: "DRAFT",
+                                local, raw.text("updatedAt").orEmpty(), raw.text("reason"))
+                        }
+                    }
+                    if (activeStorageKey != key || !live.ownsLocalLibrary(account)) return@launch
                     serverDraft = document
                     val divergent = document != null && dirty && local != document.content &&
                         (!document.editable || raw.text("remoteVersion")?.toLongOrNull() != document.version)
                     blocked = !reload && divergent
+                    val keep = !reload && dirty && (document == null || local != document.content)
                     val message = when {
-                        blocked -> "云端已有新版本，本机修改已保留"
+                        blocked -> "云端版本已更新，修改已保留"
                         document?.editable == true && document.version == null -> "服务器尚未提供草稿版本"
                         document?.status == "PENDING" -> "待审核"
                         document?.status == "RETURNED" -> "退回修改"
                         document?.status == "APPROVED" -> "已发布"
                         document?.status == "REJECTED" -> "未通过"
-                        document != null -> "云端草稿"
-                        else -> "草稿自动保存到本机"
+                        keep -> "待同步"
+                        else -> "自动保存"
                     }
-                    val keep = !reload && dirty && (document == null || local != document.content)
                     applyCloudOpen(document, keep, blocked, message, locked = document != null && !document.editable)
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: Exception) {
                     if (activeStorageKey == key) {
                         blocked = true
-                        applyCloudOpen(null, true, true, error.userMessage(), locked = false)
+                        applyCloudOpen(null, true, true, error.userMessage(), locked = serverDraft?.editable == false)
                     }
                 } finally {
                     preparing = false
@@ -315,16 +353,16 @@ internal class ArticleEditorSession(
     }
 
     private fun syncCloud(action: String, raw: String) {
-        if (syncing || preparing || mediaRequests > 0 || action !in setOf("auto", "save", "submit", "copy", "cancel")) {
+        if (syncing || preparing || mediaRequests > 0 || action !in setOf("auto", "submit", "copy", "cancel", "discard")) {
             web?.evaluateJavascript("window.SemiNativeEditor?.cloudFailed('请等待当前操作完成', false)", null)
             return
         }
         val content = runCatching { DraftContent.fromEditor(JSONObject(raw)) }.getOrNull() ?: return
-        if (content.empty && (action == "copy" || (action in setOf("auto", "save") && remoteHint == null))) {
+        if (content.empty && (action == "copy" || (action == "auto" && remoteHint == null))) {
             web?.evaluateJavascript("window.SemiNativeEditor?.cloudFailed('请输入草稿内容', false)", null)
             return
         }
-        if (action != "copy" && blocked) {
+        if (blocked && action != "copy" && !(action == "discard" && remoteHint == null)) {
             web?.evaluateJavascript("window.SemiNativeEditor?.cloudFailed('请先处理云端版本冲突', true)", null)
             return
         }
@@ -333,12 +371,24 @@ internal class ArticleEditorSession(
             try {
                 val live = checkNotNull(business)
                 val account = checkNotNull(owner)
+                if (action == "discard") {
+                    val draft = serverDraft
+                    if (remoteHint != null) {
+                        if (draft?.editable != true) throw ApiFailure(409, "当前草稿不可舍弃")
+                        live.deleteDraft(account, draft.id)
+                    }
+                    serverDraft = null
+                    remoteHint = null
+                    blocked = false
+                    web?.evaluateJavascript("window.SemiNativeEditor?.cloudDiscarded()", null)
+                    return@launch
+                }
                 if (action == "cancel") {
                     val pending = serverDraft?.takeIf { it.status == "PENDING" }
                         ?: throw ApiFailure("当前文章不在审核中")
                     val result = live.cancelReview(account, pending.id)
                     serverDraft = result
-                    applyCloudOpen(result, false, false, "已撤回审核，可继续编辑", locked = false)
+                    applyCloudOpen(result, false, false, "已撤回审核", locked = false)
                     return@launch
                 }
                 var draft = serverDraft
@@ -360,7 +410,7 @@ internal class ArticleEditorSession(
                         draft = live.submitDraft(account, draft)
                         serverDraft = draft
                     } catch (error: ApiFailure) {
-                        if (!error.isDraftConflict) notifyCloudSaved(draft, raw, "已保存草稿，提交未完成", false)
+                        if (!error.isDraftConflict) notifyCloudSaved(draft, raw, "草稿已存，未送审", false)
                         throw error
                     }
                 }
@@ -407,16 +457,28 @@ internal class ArticleEditorSession(
     }
 
     private fun draftLoadFailed() {
-        if (draftsLoading) {
-            draftsLoading = false
-            draftsFailed = true
+        if (localDraftsLoading) {
+            localDraftsLoading = false
+            localDraftsFailed = true
         }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun createWebView(palette: EditorPalette): WebView {
         val loader = WebViewAssetLoader.Builder()
-            .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(context)).build()
+            .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(context))
+            .addPathHandler("/editor-avatar/") { path ->
+                if (path != "current") return@addPathHandler null
+                val photo = previewProfile?.avatarPhoto ?: return@addPathHandler null
+                if (cloud) {
+                    val input = business?.takeIf { owner != null && it.ownsLocalLibrary(owner) }?.media?.open(photo)
+                    WebResourceResponse("image/png", null, input ?: ByteArrayInputStream(ByteArray(0)))
+                } else {
+                    val file = ProfileImages.uploadFile(context, photo) ?: return@addPathHandler null
+                    val type = if (file.extension == "png") "image/png" else "image/jpeg"
+                    WebResourceResponse(type, null, runCatching { file.inputStream() }.getOrNull())
+                }
+            }.build()
         return object : WebView(context) {
             override fun onScrollChanged(l: Int, t: Int, oldl: Int, oldt: Int) {
                 super.onScrollChanged(l, t, oldl, oldt)
@@ -437,6 +499,9 @@ internal class ArticleEditorSession(
                 override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
                     loader.shouldInterceptRequest(request.url)?.let { return it }
                     if (request.isForMainFrame) return WebResourceResponse("text/plain", "UTF-8", ByteArrayInputStream(ByteArray(0)))
+                    if (request.method == "GET" && owner != null && business?.ownsLocalLibrary(owner) == true) {
+                        business.media.open(request.url.toString())?.let { return WebResourceResponse("image/png", null, it) }
+                    }
                     return null
                 }
 
@@ -460,7 +525,7 @@ internal class ArticleEditorSession(
 
                 override fun onPageFinished(view: WebView, url: String) {
                     // A parked renderer can read storage before it has a visible animation frame.
-                    if (draftsLoading && !failed) readDrafts()
+                    if (localDraftsLoading && !failed) readDrafts()
                 }
 
                 override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
@@ -529,9 +594,12 @@ internal class ArticleEditorSession(
 
 @Composable
 internal fun rememberArticleEditorSession(storageKey: String = EDITOR_DRAFT_KEY, business: LiveBusiness? = null,
-    owner: String? = null): ArticleEditorSession {
+    owner: String? = null, profile: PreviewProfile? = null): ArticleEditorSession {
     val context = LocalContext.current
     val session = remember(storageKey, business, owner) { ArticleEditorSession(context, storageKey, business, owner) }
+    SideEffect {
+        session.updatePreviewProfile(profile ?: business?.session?.value?.account?.takeIf { it.id == owner }?.profile)
+    }
     DisposableEffect(session) { onDispose { session.destroy() } }
     return session
 }

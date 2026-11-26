@@ -156,7 +156,7 @@ class DraftBoxBubbleTest {
         fixture(motion = false, drafts = emptyList(), onOpen = { opened = true })
         app.onNodeWithTag("main-circle").performClick()
         app.onNodeWithTag("draft-box").performClick()
-        app.onNodeWithText("还没有草稿").assertIsDisplayed()
+        app.onNodeWithText("暂无草稿").assertIsDisplayed()
         app.onNodeWithText("自动保存于本机").assertDoesNotExist()
         app.onNodeWithText("写下的内容会自动保存在这里").assertDoesNotExist()
         app.onNodeWithText("创建草稿").assertDoesNotExist()

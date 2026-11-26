@@ -25,16 +25,16 @@ import kotlinx.coroutines.launch
 fun WaveArticleDeck(articles: List<Article>,selected: Int,onSelected: (Int)->Unit,onArticle: (String)->Unit,modifier: Modifier=Modifier,listTag: String="feed-category",deckTag: String="category-wave",frontTop: androidx.compose.ui.unit.Dp?=null,referenceHeight: androidx.compose.ui.unit.Dp?=null,
     visibleLimit: Int=WaveDeckMath.CATEGORY_VISIBLE,showCounter: Boolean=true,consumePageDrag: (Float)->Float={0f},
     sceneDurationMillis: Int?=null,sceneStaggerMillis: Int=SceneMotion.DECK_STAGGER_MS,entranceEase: Easing=SoSceneEase,
-    categoryLabel: String?=null,categoryLabelFrame: State<String>?=null,openWithLift: Boolean=false) {
+    openWithLift: Boolean=false,onFocused: ((Int)->Unit)?=null,usePaletteCover: Boolean=false) {
     val ids=articles.map {it.id}
     var position by remember(ids) {mutableFloatStateOf(selected.toFloat())}
     var focusedPage by remember(ids) {mutableIntStateOf(selected)}
-    var dragging by remember {mutableStateOf(false)}
-    var settling by remember {mutableStateOf(false)}
-    var elastic by remember {mutableFloatStateOf(0f)}
+    var dragging by remember(ids) {mutableStateOf(false)}
+    var settling by remember(ids) {mutableStateOf(false)}
+    var elastic by remember(ids) {mutableFloatStateOf(0f)}
     var dragDistance by remember {mutableFloatStateOf(0f)}
     var pullOrigin by remember {mutableFloatStateOf(0f)}
-    var settleJob by remember {mutableStateOf<Job?>(null)}
+    var settleJob by remember(ids) {mutableStateOf<Job?>(null)}
     val scope=rememberCoroutineScope()
     val select by rememberUpdatedState(onSelected)
     val read by rememberUpdatedState(onArticle)
@@ -42,10 +42,11 @@ fun WaveArticleDeck(articles: List<Article>,selected: Int,onSelected: (Int)->Uni
     val phase=LocalFlowPhase.current
     val expansion=LocalArticleExpansion.current
     val interactive=roll<.001f&&phase==FlowPhase.IDLE&&expansion?.active!=true
+    val canSwitch=articles.size>1
     val density=LocalDensity.current.density
     fun move(value: Float) {position=value;focusedPage=WaveDeckMath.focus(value,focusedPage)}
     fun show(index: Int): Boolean {
-        if(!interactive||index !in articles.indices)return false
+        if(!interactive||!canSwitch||index !in articles.indices)return false
         settleJob?.cancel();dragging=false;settling=false;elastic=0f
         position=index.toFloat();focusedPage=index;select(index)
         return true
@@ -59,25 +60,29 @@ fun WaveArticleDeck(articles: List<Article>,selected: Int,onSelected: (Int)->Uni
             position=selected.toFloat();focusedPage=selected
         }
     }
+    DisposableEffect(ids) {onDispose {settleJob?.cancel()}}
     BoxWithConstraints(modifier.fillMaxSize().testTag(listTag).semantics {
         isTraversalGroup=true
         stateDescription="第 ${WaveDeckMath.index(focusedPage,articles.size)+1} 篇，共 ${articles.size} 篇，"+when {
             dragging->"滑动中";settling->"收束中";else->"已停稳"
         }
-        verticalScrollAxisRange=ScrollAxisRange({WaveDeckMath.index(focusedPage,articles.size).toFloat()},{(articles.size-1).toFloat()})
-        scrollToIndex {show(it)}
-        scrollBy {_,y->if(y==0f)false else show(WaveDeckMath.index(focusedPage+if(y>0f)1 else -1,articles.size))}
-        customActions=listOf(
-            CustomAccessibilityAction("下一篇文章") {show(WaveDeckMath.index(focusedPage+1,articles.size))},
-            CustomAccessibilityAction("上一篇文章") {show(WaveDeckMath.index(focusedPage-1,articles.size))},
-        )
+        if(canSwitch) {
+            verticalScrollAxisRange=ScrollAxisRange({WaveDeckMath.index(focusedPage,articles.size).toFloat()},{(articles.size-1).toFloat()})
+            scrollToIndex {show(it)}
+            scrollBy {_,y->if(y==0f)false else show(WaveDeckMath.index(focusedPage+if(y>0f)1 else -1,articles.size))}
+            customActions=listOf(
+                CustomAccessibilityAction("下一篇文章") {show(WaveDeckMath.index(focusedPage+1,articles.size))},
+                CustomAccessibilityAction("上一篇文章") {show(WaveDeckMath.index(focusedPage-1,articles.size))},
+            )
+        }
     }) {
         val g=WaveDeckMath.embeddedGeometry(maxWidth.value,maxHeight.value,articles.size,
             (referenceHeight?:maxHeight).value,frontTop?.value,visibleLimit,LocalDensity.current.fontScale)
         val stepPx=g.scrollStep*density
         val focused=WaveDeckMath.index(focusedPage,articles.size)
+        SideEffect {onFocused?.invoke(focused)}
         fun settleTo(target: Int,velocity: Float=0f) {
-            if(!interactive)return
+            if(!interactive||!canSwitch)return
             settleJob?.cancel();settling=true
             settleJob=scope.launch {
                 try {
@@ -94,14 +99,7 @@ fun WaveArticleDeck(articles: List<Article>,selected: Int,onSelected: (Int)->Uni
         val ordered=poses.sortedByDescending {it.layer}
         val readingId=expansion?.source?.article?.id
         val departing=ordered.filter {articles[it.article].id!=readingId}
-        if(showCounter) {
-            val restOcclusionTop=categoryLabel?.let {
-                val lastVisibleDepth=(minOf(articles.size,visibleLimit.coerceAtLeast(1))-1).coerceAtLeast(0)
-                WaveDeckMath.stackTop(lastVisibleDepth.toFloat(),g).dp
-            }
-            DeckCounter(focused+1,articles.size,page=listTag.removePrefix("feed-"),
-                categoryLabel=categoryLabel,categoryLabelFrame=categoryLabelFrame,counterOcclusionTop=restOcclusionTop)
-        }
+        if(showCounter)DeckCounter(focused+1,articles.size,page=listTag.removePrefix("feed-"))
         Box(Modifier.fillMaxSize().testTag(deckTag)
             .waveDeckOverlay {interactive&&(dragging||settling)}
             .draggable(
@@ -113,7 +111,7 @@ fun WaveArticleDeck(articles: List<Article>,selected: Int,onSelected: (Int)->Uni
                         move(position+WaveDeckMath.dragDelta(remaining,stepPx))
                     }
                 },
-                orientation=Orientation.Vertical,enabled=interactive,startDragImmediately=settling,
+                orientation=Orientation.Vertical,enabled=interactive&&canSwitch,startDragImmediately=settling,
                 onDragStarted={settleJob?.cancel();settling=false;dragging=true;dragDistance=0f;pullOrigin=elastic},
                 onDragStopped={velocity->
                     dragging=false
@@ -157,6 +155,7 @@ fun WaveArticleDeck(articles: List<Article>,selected: Int,onSelected: (Int)->Uni
                     CoverArticleCard(article,active,Modifier.fillMaxSize().then(semantics),"wave-cover-"+article.id,
                         topAligned=true,squareBottom=true,shortBottomBlur=true,interactable=interactive&&!dragging&&!settling,
                         onClick={if(active)read(article.id) else settleTo(WaveDeckMath.nearestPage(pose.article,position,articles.size))},
+                        coverColor=if(usePaletteCover)categoryArticleCoverColor(article,pose.article) else null,
                         allowLift=true,stackLayer=pose.layer,openWithLift=openWithLift,onRead={
                             // Commit the source as the front card while the reader overlay covers the queue.
                             position=pose.article.toFloat();focusedPage=pose.article;select(pose.article)

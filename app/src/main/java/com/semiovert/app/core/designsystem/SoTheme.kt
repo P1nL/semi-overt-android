@@ -7,27 +7,35 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import com.semiovert.app.core.model.ThemeMode
 
-val SoGreen = SoPalette.ForestGreen
+val SoGreen = SoPalette.Teal
 
 private fun Color.tintOn(surface: Color, amount: Float) = copy(alpha = amount).compositeOver(surface)
 
+internal val ColorScheme.accentInk: Color
+    get() = if (surface.luminance() >= .5f) primary.tintOn(onSurface, .90f) else primary
+
+@Composable
+internal fun accentTextButtonColors() =
+    ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.accentInk)
+
 private val LightColors = with(SoPalette) {
     lightColorScheme(
-        primary = ForestGreen, onPrimary = Color.White,
-        primaryContainer = ForestGreen.tintOn(LightSurface, .10f), onPrimaryContainer = ForestGreen.tintOn(LightInk, .36f),
+        primary = Teal, onPrimary = Color.White,
+        primaryContainer = Teal.tintOn(LightSurface, .10f), onPrimaryContainer = Teal.tintOn(LightInk, .36f),
         secondary = Amethyst, onSecondary = Color.White,
         secondaryContainer = Amethyst.tintOn(LightSurface, .12f), onSecondaryContainer = Amethyst.tintOn(LightInk, .40f),
         tertiary = AutumnLeaf.tintOn(DarkSurface, .70f), onTertiary = Color.White,
         tertiaryContainer = CarrotOrange.tintOn(LightSurface, .18f), onTertiaryContainer = AutumnLeaf.tintOn(LightInk, .28f),
         background = LightSurface, onBackground = LightInk, surface = LightSurface, onSurface = LightInk,
         surfaceVariant = Teal.tintOn(LightSurface, .11f), onSurfaceVariant = LightInk.tintOn(LightSurface, .81f),
-        surfaceDim = Teal.tintOn(LightSurface, .14f), surfaceBright = LightSurface, surfaceTint = ForestGreen,
+        surfaceDim = Teal.tintOn(LightSurface, .14f), surfaceBright = LightSurface, surfaceTint = Teal,
         surfaceContainerLowest = Color.White, surfaceContainerLow = LightSurface,
         surfaceContainer = Teal.tintOn(LightSurface, .04f), surfaceContainerHigh = Teal.tintOn(LightSurface, .07f),
         surfaceContainerHighest = Teal.tintOn(LightSurface, .11f),
@@ -54,7 +62,7 @@ private val DarkColors = with(SoPalette) {
         outline = DarkInk.tintOn(DarkSurface, .46f), outlineVariant = Teal.tintOn(DarkSurface, .38f),
         error = Tomato, onError = DarkSurface,
         errorContainer = TomatoJam.tintOn(DarkSurface, .32f), onErrorContainer = Tomato.tintOn(DarkInk, .29f),
-        inverseSurface = LightSurface, inverseOnSurface = LightInk, inversePrimary = ForestGreen,
+        inverseSurface = LightSurface, inverseOnSurface = LightInk, inversePrimary = Teal,
     )
 }
 

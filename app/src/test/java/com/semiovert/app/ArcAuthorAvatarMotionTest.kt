@@ -82,12 +82,14 @@ class ArcAuthorAvatarMotionTest {
         assertNull(ArcAuthorAvatarMotion.expandedPlacement(g,80f,80f,80f+g.cardHeight+20f))
     }
 
-    @Test fun restingCircleIsTangentAndHiddenCircleIsBeyondTheRightEdge() {
+    @Test fun restingCircleLeavesAGapWithoutShrinkingAndHidesBeyondTheRightEdge() {
         val g=ArcDeckMath.geometry(400f,850f)
         val p=ArcAuthorAvatarMotion.placement(g)
-        assertEquals(g.focusX+g.cardWidth/2f,p.left,.001f)
+        val cardRight=g.focusX+g.cardWidth/2f
+        assertEquals(6f,p.left-cardRight,.001f)
+        assertEquals(g.width-cardRight-12f,p.diameter,.001f)
         assertEquals(g.focusY,p.top+p.diameter/2f,.001f)
-        assertTrue(p.left+p.diameter<=g.width-12f)
+        assertEquals(6f,g.width-p.left-p.diameter,.001f)
         assertTrue(p.left+p.hiddenOffset>g.width)
     }
 

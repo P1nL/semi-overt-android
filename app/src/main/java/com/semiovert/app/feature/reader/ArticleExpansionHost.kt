@@ -19,6 +19,7 @@ import androidx.compose.ui.text.*
 import androidx.compose.ui.text.font.*
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
+import com.semiovert.app.core.data.LocalBusiness
 import com.semiovert.app.core.designsystem.*
 import com.semiovert.app.core.designsystem.wave.readingStackOverlay
 import kotlin.math.roundToInt
@@ -34,7 +35,13 @@ fun ArticleExpansionHost(expansion: ArticleExpansionState=rememberArticleExpansi
     val motion=LocalMotionEnabled.current
     val focus=LocalFocusManager.current
     val keyboard=LocalSoftwareKeyboardController.current
-    SideEffect {expansion.motionEnabled=motion;expansion.onStart={focus.clearFocus();keyboard?.hide()}}
+    val business=LocalBusiness.current
+    val readCache=remember(business) {business?.let {it::cachedArticle}}
+    SideEffect {
+        expansion.motionEnabled=motion
+        expansion.onStart={focus.clearFocus();keyboard?.hide()}
+        expansion.readCachedArticle=readCache
+    }
     var root by remember {mutableStateOf(Offset.Zero)}
     BackHandler(expansion.active){expansion.cancel()}
     CompositionLocalProvider(LocalArticleExpansion provides expansion) {
@@ -52,6 +59,10 @@ private fun ExpansionOverlay(source: ArticleSource,state: ArticleExpansionState,
     val p=state.progress
     val contentProgress=state.contentProgress
     val body=SceneMotion.readingBody(contentProgress,state.returning,source.origin)
+    val avatar=SceneMotion.readingOpeningAvatar(contentProgress,source.origin,state.returning)
+    val returningReader=state.returningReader
+    val readerArticle=returningReader?.article ?: source.article
+    val loader=state.openingLoad?.takeIf {it.cacheMissed}?.playback
     // Both directions share the copy path and fixed-size cover, with independent clocks.
     val textPosition=if(anchors.title==Rect.Zero)0f else SceneMotion.readingOpeningText(contentProgress,source.origin,state.returning)
     val geometry=SoEase.transform(textPosition)
@@ -81,22 +92,25 @@ private fun ExpansionOverlay(source: ArticleSource,state: ArticleExpansionState,
             color=MaterialTheme.colorScheme.background) {
             ArticleCoverArtwork(source.article,source.origin==ArticleOrigin.STACK,Modifier.fillMaxSize(),source.coverColor)
         }
-        ReaderArticleLayout(source.article,rememberLazyListState(),{},anchors,
-            bodyProgress=body,avatarProgress=SceneMotion.readingOpeningAvatar(contentProgress,source.origin,state.returning),
-            headingProgress=geometry,tag="reader-preview")
+        if(returningReader!=null)returningReader.layout(anchors,body,avatar)
+        else ReaderArticleLayout(source.article,rememberLazyListState(),{},anchors,
+            bodyProgress=body,avatarProgress=avatar,
+            headingProgress=geometry,tag="reader-preview") {
+            if(loader!=null)ContentLoading(true,READER_BODY_LOADING,Modifier.align(Alignment.Center),playback=loader)
+        }
         val cardTitle=MaterialTheme.typography.titleLarge.copy(fontFamily=FontFamily.SansSerif,fontSize=23.sp,lineHeight=29.sp,fontWeight=FontWeight.SemiBold)
         val cardMeta=MaterialTheme.typography.bodySmall.copy(fontSize=13.sp,lineHeight=18.sp)
         StableReadingText(source.article.title,carried(source.title),anchors.title,cardTitle,MaterialTheme.typography.headlineLarge,
-            color,geometry,root,sourceLines=3,targetLines=Int.MAX_VALUE,positionProgress=textPosition,tag="reading-copy-title")
+            color,geometry,root,sourceLines=3,targetLines=Int.MAX_VALUE,targetText=readerArticle.title,positionProgress=textPosition,tag="reading-copy-title")
         StableReadingText(source.article.author.name,carried(source.author),anchors.author,cardMeta,MaterialTheme.typography.labelLarge,
-            color,geometry,root,positionProgress=textPosition)
+            color,geometry,root,targetText=readerArticle.author.name,positionProgress=textPosition)
         val separator=Rect(source.author.right,source.author.top,source.duration.left,source.author.bottom)
         if(separator.width>0f)StableReadingText(" · ",carried(separator),Rect.Zero,cardMeta,cardMeta,
             color,geometry,root,targetText="",positionProgress=textPosition)
         StableReadingText(source.article.date,carried(source.date),anchors.date,cardMeta,MaterialTheme.typography.labelMedium,
-            metaColor,geometry,root,targetText=source.article.date+" · ",positionProgress=textPosition,interfaceDigits=true)
+            metaColor,geometry,root,targetText=readerArticle.date+" · ",positionProgress=textPosition,interfaceDigits=true)
         StableReadingText("约 "+source.article.minutes+" 分钟",carried(source.duration),anchors.duration,cardMeta,MaterialTheme.typography.labelMedium,
-            metaColor,geometry,root,positionProgress=textPosition,interfaceDigits=true)
+            metaColor,geometry,root,targetText="约 "+readerArticle.minutes+" 分钟",positionProgress=textPosition,interfaceDigits=true)
         if(source.origin==ArticleOrigin.STACK)Box(Modifier.offset {IntOffset((card.center.x-root.x-16.dp.toPx()).roundToInt(),
             (card.top+12.dp.toPx()-root.y).roundToInt())}
             .size(32.dp,3.dp).graphicsLayer {alpha=cardAlpha}

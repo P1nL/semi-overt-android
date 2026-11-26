@@ -25,7 +25,7 @@ fun ContentStatesScreen(onBack: ()->Unit) {
         Column(Modifier.fillMaxSize(),verticalArrangement=Arrangement.Center,horizontalAlignment=Alignment.CenterHorizontally) {
             SoIcon(when(state){"加载"->SoSymbol.CLOCK;"请求失败","内容不可见"->SoSymbol.CLOSE;"文章不存在"->SoSymbol.SEARCH;else->SoSymbol.BOOK},
                 modifier=Modifier.size(40.dp),tint=MaterialTheme.colorScheme.primary)
-            Text(when(state){"加载"->"正在加载";"空内容"->"暂无文章";"请求失败"->"暂时无法获取内容";"内容不可见"->"文章暂不可见";"文章不存在"->"未找到文章";else->"内容已恢复"},style=MaterialTheme.typography.titleMedium,modifier=Modifier.padding(top=24.dp))
+            StatusText(when(state){"加载"->"加载中";"空内容"->"暂无文章";"请求失败"->"加载失败";"内容不可见"->"文章不可见";"文章不存在"->"未找到文章";else->"已恢复"},style=MaterialTheme.typography.titleMedium,modifier=Modifier.padding(top=24.dp))
         }
         }
     }

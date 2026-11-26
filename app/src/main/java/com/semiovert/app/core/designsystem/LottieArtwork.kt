@@ -21,8 +21,12 @@ import com.airbnb.lottie.value.LottieValueCallback
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-internal class IntroGhost private constructor(composition: LottieComposition) {
-    val durationNanos=(composition.duration*1_000_000.0).toLong()
+internal class LottieArtwork private constructor(composition: LottieComposition,markerName: String?) {
+    private val marker=markerName?.let(composition::getMarker)
+    private val startProgress=marker?.let {composition.getProgressForFrame(it.startFrame)} ?: 0f
+    private val endProgress=marker?.let {composition.getProgressForFrame(it.startFrame+it.durationFrames)} ?: 1f
+    val durationNanos=marker?.let {(it.durationFrames*1_000_000_000.0/composition.frameRate).toLong()}
+        ?: (composition.duration*1_000_000.0).toLong()
     private val viewport=composition.bounds
     private val drawable=LottieDrawable().apply {
         enableFeatureFlag(LottieFeatureFlag.MergePathsApi19,true)
@@ -43,7 +47,7 @@ internal class IntroGhost private constructor(composition: LottieComposition) {
 
     fun draw(scope: DrawScope,bounds: Rect,ink: Color,progress: Float) {
         setTint(ink)
-        drawable.progress=progress
+        drawable.progress=startProgress+(endProgress-startProgress)*progress
         scope.drawIntoCanvas {
             val canvas=it.nativeCanvas
             val saved=canvas.save()
@@ -55,10 +59,10 @@ internal class IntroGhost private constructor(composition: LottieComposition) {
     }
 
     companion object {
-        suspend fun load(context: Context,ink: Color): IntroGhost? =
+        suspend fun load(context: Context,asset: String,ink: Color,marker: String?=null): LottieArtwork? =
             withContext(Dispatchers.IO) {
-                LottieCompositionFactory.fromAssetSync(context,"identity/startup-ghost.json").value
-                    ?.let {IntroGhost(it).apply {setTint(ink)}}
+                LottieCompositionFactory.fromAssetSync(context,asset).value
+                    ?.let {LottieArtwork(it,marker).apply {setTint(ink)}}
             }
     }
 }
